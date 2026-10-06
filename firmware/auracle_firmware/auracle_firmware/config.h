@@ -13,10 +13,10 @@ constexpr uint8_t PIN_LF_EN = 10;
 constexpr uint8_t PIN_L_FWD = A0;
 constexpr uint8_t PIN_L_REV = A1;
 // Rear encoders, 1x decoding: RISING on INT pin, DIR pin HIGH = forward.
-constexpr uint8_t PIN_LB_ENC_INT = 2;
-constexpr uint8_t PIN_LB_ENC_DIR = 4;
-constexpr uint8_t PIN_RB_ENC_INT = 3;
-constexpr uint8_t PIN_RB_ENC_DIR = 12;
+constexpr uint8_t PIN_RB_ENC_INT = 2; 
+constexpr uint8_t PIN_RB_ENC_DIR = 4;
+constexpr uint8_t PIN_LB_ENC_INT = 3;
+constexpr uint8_t PIN_LB_ENC_DIR = 13;
 // MPU6050 on A4 (SDA) / A5 (SCL).
 
 constexpr long BAUDRATE = 115200;  // must match ros2_control.xacro

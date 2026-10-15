@@ -7,10 +7,11 @@
 //                                      (1x ticks/s; |v| below MIN_TARGET_TICKS_S = stop)
 //   o <left_pwm> <right_pwm>           open-loop rear PWM, fronts follow (front-offset test)
 //   s                                  stop, and clear a latched fault
+//                                      (a 'v 0 0' also clears a latched fault)
 // Nano -> Pi:
 //   READY                              once after boot
 //   e <ms> <l_ticks> <r_ticks> <ax> <ay> <az> <gx> <gy> <gz>   every 50 ms
-//   F <L|R> <code>                     wheel fault, motors stopped until 's'
+//   F <L|R> <code>                     wheel fault, motors stopped until 's' or 'v 0 0'
 //                                      (1 = moving against the command, 2 = PWM saturated, target not reached,
 //                                       3 = no motion: dead encoder or blocked wheel)
 //                                      only sent when REPORT_FAULTS is true in config.h

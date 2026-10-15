@@ -65,7 +65,7 @@ void apply(MotorDriver& side, const DriveCmd& c) {
     }
 }
 
-// A latched fault stops everything until the Pi sends 's'.
+// A latched fault stops everything until the Pi sends 's' or a zero velocity command.
 void checkFaults() {
     Fault fl = leftPid.fault(), fr = rightPid.fault();
     if (fl == FAULT_NONE && fr == FAULT_NONE) return;
@@ -79,17 +79,24 @@ void checkFaults() {
 
 void handle(const Command& cmd) {
     switch (cmd.type) {
-        case 'v':
-            if (faultLatched) break;
+        case 'v': {
+            float tl = clampTarget(cmd.a), tr = clampTarget(cmd.b);
+            if (faultLatched) {
+                if (tl != 0 || tr != 0) break;   // stay stopped while the Pi keeps asking for motion
+                faultLatched = false;            // a zero command (key released) clears the fault
+                leftPid.clearFault();
+                rightPid.clearFault();
+            }
             lastCmdMs = millis();
-            targetL = clampTarget(cmd.a);
-            targetR = clampTarget(cmd.b);
+            targetL = tl;
+            targetR = tr;
             if (mode != MODE_PID) {
                 leftPid.reset();
                 rightPid.reset();
                 mode = MODE_PID;
             }
             break;
+        }
         case 'o':
             if (faultLatched) break;
             lastCmdMs = millis();

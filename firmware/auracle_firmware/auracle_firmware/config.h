@@ -112,7 +112,7 @@ constexpr float         STILL_TICKS_S    = 30.0f;
 // --- Safety ---
 constexpr unsigned long COMMS_TIMEOUT_MS = 500;   // stop if the Pi goes quiet
 // A wheel that runs away or never reaches its target latches a fault: every motor stops and
-// stays stopped until an 's' command. This is what an unplugged encoder looks like.
+// stays stopped until an 's' or a zero 'v' command. This is what an unplugged encoder looks like.
 constexpr unsigned long FAULT_GRACE_MS   = 800;   // no fault checks this long after a start
 constexpr float FAULT_WRONG_SIGN_TICKS_S = 100.0f; // moving this fast against the command ...
 constexpr uint8_t FAULT_WRONG_SIGN_COUNT = 6;      // ... for this many control periods (300 ms)

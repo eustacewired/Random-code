@@ -2,34 +2,47 @@
 #include "config.h"
 
 MotorDriver::MotorDriver(uint8_t pinFwd, uint8_t pinRev, uint8_t pinRearEn, uint8_t pinFrontEn,
-                         uint8_t rearMin, uint8_t frontMin, float frontOffset)
+                         float frontTrim, uint8_t frontMinPwm)
     : pinFwd_(pinFwd), pinRev_(pinRev), pinRearEn_(pinRearEn), pinFrontEn_(pinFrontEn),
-      rearMin_(rearMin), frontMin_(frontMin), frontOffset_(frontOffset) {}
+      frontTrim_(frontTrim), frontMinPwm_(frontMinPwm) {}
+
+void MotorDriver::configurePwmTimers() {
+    // Timer1: phase-correct 8-bit (490 Hz) -> fast PWM 8-bit, /64 prescaler = ~976 Hz.
+    // Only the waveform and clock bits are changed; the output-compare bits stay as they are.
+    TCCR1A = (TCCR1A & 0xFC) | _BV(WGM10);
+    TCCR1B = (TCCR1B & 0xE0) | _BV(WGM12) | _BV(CS11) | _BV(CS10);
+}
 
 void MotorDriver::begin() {
     pinMode(pinFwd_, OUTPUT);
     pinMode(pinRev_, OUTPUT);
     pinMode(pinRearEn_, OUTPUT);
     pinMode(pinFrontEn_, OUTPUT);
-    stop();
+    coast();
 }
 
-void MotorDriver::stop() {
+void MotorDriver::coast() {
     analogWrite(pinRearEn_, 0);
     analogWrite(pinFrontEn_, 0);
     digitalWrite(pinFwd_, LOW);
     digitalWrite(pinRev_, LOW);
 }
 
-void MotorDriver::setEffort(int effort) {
+void MotorDriver::brake() {
+    digitalWrite(pinFwd_, HIGH);
+    digitalWrite(pinRev_, HIGH);
+    analogWrite(pinRearEn_, 255);
+    analogWrite(pinFrontEn_, 255);
+}
+
+void MotorDriver::drive(int effort) {
     if (effort == 0) {
-        stop();
+        coast();
         return;
     }
     bool forward = effort > 0;
-    // Below the stall PWM the motor just hums - bump to the floor.
-    int rear = constrain(abs(effort), rearMin_, MAX_PWM);
-    int front = constrain((int)(rear * frontOffset_), frontMin_, MAX_PWM);
+    int rear = constrain(abs(effort), 0, MAX_PWM);
+    int front = constrain((int)(rear * frontTrim_ + 0.5f), (int)frontMinPwm_, MAX_PWM);
 
     digitalWrite(pinFwd_, forward ? HIGH : LOW);
     digitalWrite(pinRev_, forward ? LOW : HIGH);

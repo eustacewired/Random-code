@@ -48,11 +48,14 @@ source install/setup.bash && ros2 launch auracle_bringup launch_sim.launch.py
 ```
 source install/setup.bash&& ros2 launch auracle_bringup localization_nav_rviz.launch.py use_sim_time:=true map:=$(pwd)/src/auracle_bringup/config/map_1.yaml
 ```
-Click the + icon at the end of the toolbar (next to Nav2 Goal).
-In the tool picker, search for and add "2D Pose Estimate" (this is the standard rviz tool, distinct from Nav2 Goal).
-Click that new tool, then click-and-drag on the map at the robot's actual position and heading in Gazebo — click sets the position, the drag direction sets which way it's facing.
-Click "2D Pose Estimate", then click-drag on the map at the robot's actual position/heading in Gazebo. Don't send Nav2 goals and teleop at the same time (they'll f]
-ight over cmd_vel).
+
+In RViz, check that:
+the global costmap now covers the whole map;
+the particle cloud is a tight cluster around the robot;
+there are no TF errors in the Displays panel.
+Click Nav2 Goal in the toolbar, then click-and-drag on a free (grey) spot of the map. The click sets the position and the drag sets the heading.
+A green line (GlobalPlan) should appear and the robot should start driving in Gazebo. Navigation goes through cmd_vel_nav into twist_mux at priority 40, which is wired correctly.
+Don’t press keys in the teleop window while a goal is running, because joystick and teleop input has priority 100 and overrides Nav2.
 
 
 # Real robot (Pi 5 + Arduino Nano)

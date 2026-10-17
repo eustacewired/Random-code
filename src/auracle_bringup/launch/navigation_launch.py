@@ -100,7 +100,8 @@ def generate_launch_description():
             namespace=namespace,
             output='screen',
             parameters=[configured_params],
-            remappings=remappings),
+            remappings=remappings + [('cmd_vel', 'cmd_vel_nav')],
+            ),
 
         Node(
             package='nav2_planner',

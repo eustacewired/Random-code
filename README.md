@@ -102,25 +102,25 @@ sudo reboot
 
 **On Pi Terminal: robot (hardware interface, controllers, lidar, EKF)**
 ```
-source install/setup.bash && ros2 launch auracle_bringup launch_robot.launch.py namespace:=robot1
+source install/setup.bash && ros2 launch auracle_bringup launch_robot.launch.py namespace:=auracle
 ```
 If lidar not connected, skip it:
 ```
-source install/setup.bash && ros2 launch auracle_bringup launch_robot.launch.py use_lidar:=false namespace:=robot1
+source install/setup.bash && ros2 launch auracle_bringup launch_robot.launch.py use_lidar:=false namespace:=auracle
 ```
 Confirm topics and services are live with `ros2 topic list` and `ros2 service list`
 
 **Terminal 2: keyboard teleop**
 ```
-source install/setup.bash && ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=cmd_vel_joy -r __ns:=/robot1
+source install/setup.bash && ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=cmd_vel_joy -r __ns:=/auracle
 ```
 **Joystick (optional)**
 With controller paired over bluetooth on the laptop, this has to be launched on the laptop
 ```
-ros2 launch auracle_bringup joystick.launch.py use_sim_time:=false namespace:=robot1
+ros2 launch auracle_bringup joystick.launch.py use_sim_time:=false namespace:=auracle
 ```
 
 **SLAM + Nav2 + RViz** (run on the laptop, same `ROS_DOMAIN_ID`)
 ```
-source install/setup.bash && ros2 launch auracle_bringup slam_nav_rviz.launch.py use_sim_time:=false namespace:=robot1
+source install/setup.bash && ros2 launch auracle_bringup slam_nav_rviz.launch.py use_sim_time:=false namespace:=auracle
 ```

@@ -12,3 +12,8 @@
         topic: cmd_vel_tracker
         timeout: 0.5
         priority: 50
+
+      navigation:
+        topic: cmd_vel_nav
+        timeout: 0.5
+        priority: 40

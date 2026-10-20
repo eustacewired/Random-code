@@ -42,7 +42,7 @@ void MotorDriver::drive(int effort) {
     }
     bool forward = effort > 0;
     int rear = constrain(abs(effort), 0, MAX_PWM);
-    int front = constrain((int)(rear * frontTrim_ + 0.5f), (int)frontMinPwm_, MAX_PWM);
+    int front = constrain((int)(rear * frontTrim_ + 0.5f) + frontBoost_, (int)frontMinPwm_, MAX_PWM);
 
     digitalWrite(pinFwd_, forward ? HIGH : LOW);
     digitalWrite(pinRev_, forward ? LOW : HIGH);

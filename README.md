@@ -135,6 +135,11 @@ source install/setup.bash && ros2 launch auracle_bringup launch_robot.launch.py 
 ```
 `use_joy_node:=false` is right whenever `/joy` comes from another machine (Windows bridge or laptop). Drop it only if the controller is paired to the Pi itself.
 
+To confirm in a separate terminal
+```
+ros2 control list_controllers -c /auracle/controller_manager         # diff_cont must show "active". If any inactive, launch with ros2 run controller_manager spawner diff_cont
+```
+
 Confirm topics and services are live with `ros2 topic list` and `ros2 service list`
 
 **Terminal 2: keyboard teleop**
@@ -157,7 +162,6 @@ Smoothing, speed and the button mapping are all in `config/joystick.yaml`.
 | Input | Does |
 |---|---|
 | LT + RT | Both pressed drives forward. Release LT and it banks left, release RT and it banks right. |
-| Back (the small **−** button) + LT/RT | Reverse |
 | D-pad up / down | Speed level up / down in 10% steps (hold to repeat). Scales everything, starts at 50%. |
 | Y, A | Forward, backward |
 | X, B | Turn left, turn right. Combine with Y or A for arcs. |
@@ -176,7 +180,7 @@ source install/setup.bash && ros2 run auracle_bringup joy_udp_node.py --ros-args
 4. Windows PowerShell:
 ```
 cd C:\my_gits\test_files
-python joy_bridge_win.py            # python joy_bridge_win.py --probe  shows what each button maps to
+python joy_bridge_win.py --host 100.81.100.9           # python joy_bridge_win.py --probe  shows what each button maps to
 ```
 In the sim, the same but with no namespace: `ros2 run auracle_bringup joy_udp_node.py`.
 

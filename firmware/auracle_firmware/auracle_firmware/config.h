@@ -112,6 +112,9 @@ constexpr float         BRAKE_MIN_TICKS_S = 50.0f;
 constexpr unsigned long REVERSE_WAIT_MS  = 800;   // max wait for standstill before reversing
 constexpr float         STILL_TICKS_S    = 30.0f;
 
+// Extra front-wheel PWM while turning (fronts have no encoder, so they can't sense the scrub load).
+constexpr uint8_t FRONT_TURN_BOOST_PWM      = 40;      // tune: raise until the stutter stops
+constexpr float   BOOST_FULL_DIFF_TICKS_S   = 600.0f;  // |right - left| target where the full boost applies
 // --- Safety ---
 constexpr unsigned long COMMS_TIMEOUT_MS = 500;   // stop if the Pi goes quiet
 // A wheel that runs away or never reaches its target latches a fault: every motor stops and

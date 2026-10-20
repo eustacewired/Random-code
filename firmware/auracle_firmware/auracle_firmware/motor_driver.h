@@ -20,9 +20,11 @@ public:
     void brake();
     // Everything off.
     void coast();
+        void setFrontBoost(uint8_t b) { frontBoost_ = b; }
 
 private:
     uint8_t pinFwd_, pinRev_, pinRearEn_, pinFrontEn_;
     float frontTrim_;
     uint8_t frontMinPwm_;
+        uint8_t frontBoost_ = 0;   
 };

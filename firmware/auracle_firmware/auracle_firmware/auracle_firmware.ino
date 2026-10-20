@@ -197,10 +197,17 @@ void loop() {
     lastCountR = countR;
 
     if (mode == MODE_PID) {
+        // Front wheels get extra PWM in proportion to how hard the robot is turning.
+        float turn = constrain(fabs(targetR - targetL) / BOOST_FULL_DIFF_TICKS_S, 0.0f, 1.0f);
+        uint8_t boost = (uint8_t)(FRONT_TURN_BOOST_PWM * turn + 0.5f);
+        leftSide.setFrontBoost(boost);
+        rightSide.setFrontBoost(boost);
         apply(leftSide, leftPid.update(targetL, rawL, dt, now));
         apply(rightSide, rightPid.update(targetR, rawR, dt, now));
         if (!faultLatched) checkFaults();
     } else {
+        leftSide.setFrontBoost(0);
+        rightSide.setFrontBoost(0);
         leftPid.observe(rawL);
         rightPid.observe(rawR);
         leftSide.drive(pwmL);

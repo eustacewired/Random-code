@@ -73,9 +73,9 @@ constexpr float RB_FF_REV_BASE = 9.7f,  RB_FF_REV_K = 0.1384f;
 // equal PWM (trim 1.0) is the best guess for same-model motors. The old 1.15 / 1.5 offsets were measured
 // at mismatched PWM frequencies (and while RB was failing); re-run the front-offset test and set
 //   new_trim = old_trim * (rear_speed / front_speed)
-constexpr float LF_TRIM = 1.0f;
+constexpr float LF_TRIM = 1.3f;
 constexpr float RF_TRIM = 1.0f;
-constexpr uint8_t LF_MIN_PWM = 48;   // stall by eye at the old 490 Hz
+constexpr uint8_t LF_MIN_PWM = 70;   // stall by eye at the old 490 Hz
 constexpr uint8_t RF_MIN_PWM = 51;   // stall by eye
 
 // --- Speed targets (1x ticks/s) ---

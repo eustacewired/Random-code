@@ -15,6 +15,10 @@ void get_mcusr(void) {
     wdt_disable();
 }
 
+// If the faster wheel is commanded below this, the Pi is asking for a stop.
+// Anything above it keeps both wheels turning (see conditionTargets).
+
+
 // MODE_PID with zero targets is "stopped": the controllers brake (if still rolling) and coast.
 enum Mode : uint8_t { MODE_PID, MODE_OPEN_LOOP };
 
@@ -42,9 +46,37 @@ int16_t imuRaw[6] = {0, 0, 0, 0, 0, 0};
 void isrLeft() { leftEnc.tick(); }
 void isrRight() { rightEnc.tick(); }
 
-float clampTarget(float t) {
-    if (fabs(t) < MIN_TARGET_TICKS_S) return 0.0f;
-    return constrain(t, -MAX_TICKS_S, MAX_TICKS_S);
+// Conditions the left/right pair TOGETHER so a moving robot never has a stationary side
+// (a stopped wheel means brake -> coast -> kick restart, which is the vibration and jumping).
+// Rule: the yaw demand (r - l) is kept exact, forward speed absorbs the correction.
+//   - both wheels near zero            -> real stop
+//   - pure spin request (l ~= -r)      -> stays a spin in place, each wheel clamped to MIN..MAX
+//   - difference > MAX - MIN           -> counter-rotate (pivot), no wheel can run slower than MIN
+//   - otherwise (arc)                  -> shift both wheels together until the slower is at MIN
+void conditionTargets(float& l, float& r) {
+    if (max(fabs(l), fabs(r)) < CMD_DEADBAND_TICKS_S) { l = r = 0; return; }
+
+    float d = r - l;                       // yaw demand, preserved
+    float m = 0.5f * (l + r);              // forward demand
+    const float maxDiff = MAX_TICKS_S - MIN_TARGET_TICKS_S;
+
+    if (fabs(m) < 1.0f || fabs(d) > maxDiff) {   // spin or tight turn: counter-rotate
+        float h = constrain(fabs(d) * 0.5f, MIN_TARGET_TICKS_S, MAX_TICKS_S);
+        float s = (d >= 0) ? 1.0f : -1.0f;
+        l = -s * h;
+        r =  s * h;
+        return;
+    }
+
+    // Arc: both wheels turn the same way. Shift them together, keeping r - l exact.
+    float dir = (m >= 0) ? 1.0f : -1.0f;
+    float a = dir * l, b = dir * r;        // work in the direction of travel
+    float lo = min(a, b);
+    if (lo < MIN_TARGET_TICKS_S) { float s = MIN_TARGET_TICKS_S - lo; a += s; b += s; }
+    float hi = max(a, b);
+    if (hi > MAX_TICKS_S)        { float s = hi - MAX_TICKS_S;        a -= s; b -= s; }
+    l = dir * a;
+    r = dir * b;
 }
 
 // Zero the targets and cut the motors now. A wheel that is still rolling gets a short brake
@@ -80,7 +112,8 @@ void checkFaults() {
 void handle(const Command& cmd) {
     switch (cmd.type) {
         case 'v': {
-            float tl = clampTarget(cmd.a), tr = clampTarget(cmd.b);
+            float tl = cmd.a, tr = cmd.b;
+            conditionTargets(tl, tr);
             if (faultLatched) {
                 if (tl != 0 || tr != 0) break;   // stay stopped while the Pi keeps asking for motion
                 faultLatched = false;            // a zero command (key released) clears the fault

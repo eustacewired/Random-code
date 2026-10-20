@@ -11,7 +11,7 @@ install(DIRECTORY
 )
 
 install(PROGRAMS
-  scripts/drive_test.py
+  scripts/joy_drive.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

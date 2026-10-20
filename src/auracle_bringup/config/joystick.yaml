@@ -4,17 +4,55 @@
     deadzone: 0.05
     autorepeat_rate: 20.0
 
-/**/teleop_twist_joy_node:
+# Game-style driving node (scripts/joy_drive.py). Replaces teleop_twist_joy.
+# NOTE: yaml types must match: whole numbers for indices, decimals (1.0) for floats.
+/**/joy_drive_node:
   ros__parameters:
-    axis_linear:
-      x: 1
-    scale_linear:
-      x: 0.5
-    scale_linear_turbo:
-      x: 1.0
-    axis_angular:
-      yaw: 0
-    scale_angular:
-      yaw: 1.0
-    enable_button: 4        # left bumper - hold to drive
-    enable_turbo_button: 5  # right bumper - hold for turbo
+    # Which control schemes are live. Remove one to disable it.
+    #   stick    = LB (held) + left stick
+    #   triggers = LT/RT as left/right tracks (Back = reverse)
+    #   buttons  = Y fwd, A back, X left, B right
+    enabled_modes: ['stick', 'triggers', 'buttons']
+
+    # --- Speed at 100 % speed level. D-pad up/down moves the level in 10 % steps. ---
+    max_linear: 0.25          # m/s. my_controllers_real.yaml clamps to 0.25, so 100 % = max.
+    max_angular: 1.5          # rad/s
+    wheel_separation: 0.2755  # m. Used for trigger banking; keep equal to diff_cont's value.
+    initial_speed: 0.5        # start at 50 %
+    speed_min: 0.1
+    speed_max: 1.0
+    speed_step: 0.1
+    speed_repeat_delay: 0.4   # s of holding the d-pad before it auto-repeats
+    speed_repeat_rate: 6.0    # steps/s while held
+
+    # --- Smoothness ---
+    publish_rate: 50.0
+    smoothing_linear: 0.12    # s. Bigger = smoother but lazier (about 4x this to reach 90 %).
+    smoothing_angular: 0.15
+    decel_ratio: 0.7          # braking is a bit quicker than accelerating (1.0 = same)
+    max_accel_linear: 0.55    # keep BELOW diff_cont's 0.6 so it never clamps (steppy)
+    max_accel_angular: 2.8    # keep BELOW diff_cont's 3.0
+    stale_timeout: 0.3        # s without /joy -> ramp to a stop
+
+    # --- Feel ---
+    stick_deadzone: 0.08
+    stick_expo: 1.5           # >1 = gentler near centre, full speed still reachable
+    trigger_deadzone: 0.03
+    trigger_expo: 1.5
+    button_turn_scale: 0.7    # X/B turn rate relative to full
+
+    # --- Mapping: Linux xpad layout (what joy_bridge_win.py sends). ---
+    # Verify with `ros2 topic echo /joy` on a native Linux pad and edit if needed.
+    axis_stick_x: 0
+    axis_stick_y: 1
+    axis_lt: 2
+    axis_rt: 5
+    axis_dpad_y: 7
+    trigger_rest: 1.0         # raw trigger value when released
+    trigger_pressed: -1.0     # raw trigger value when fully pressed
+    button_enable: 4          # LB
+    button_reverse: 6         # Back
+    button_forward: 3         # Y
+    button_back: 0            # A
+    button_left: 2            # X
+    button_right: 1           # B

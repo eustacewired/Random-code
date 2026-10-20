@@ -46,6 +46,15 @@ def generate_launch_description():
                      "comes from config/99-auracle.rules; otherwise use /dev/ttyUSB0.")
     )
 
+    use_joy_node = LaunchConfiguration('use_joy_node')
+    declare_use_joy_node = DeclareLaunchArgument(
+        'use_joy_node',
+        default_value='true',
+        description=("true = read a controller attached to this machine. "
+                     "false = /joy comes from elsewhere (e.g. the Windows->WSL UDP "
+                     "bridge), so this machine runs only the drive node.")
+    )
+
     rsp = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([os.path.join(
             bringup_pkg, 'launch', 'rsp.launch.py'
@@ -58,7 +67,8 @@ def generate_launch_description():
         PythonLaunchDescriptionSource([os.path.join(
             bringup_pkg, 'launch', 'joystick.launch.py'
         )]),
-        launch_arguments={'use_sim_time': use_sim_time, 'namespace': namespace}.items()
+        launch_arguments={'use_sim_time': use_sim_time, 'namespace': namespace,
+                          'use_joy_node': use_joy_node}.items()
     )
 
     # Real hardware only - launch_sim.launch.py gets its /scan from the
@@ -269,6 +279,7 @@ def generate_launch_description():
         declare_lidar_port,
         declare_use_lidar,
         declare_arduino_port,
+        declare_use_joy_node,
         rsp,
         joystick,
         rplidar,

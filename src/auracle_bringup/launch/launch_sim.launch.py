@@ -32,6 +32,13 @@ def generate_launch_description():
                     'Used by Optuna trials to avoid paying for rendering.'
     )
 
+    use_joy_node = LaunchConfiguration('use_joy_node')
+    declare_use_joy_node = DeclareLaunchArgument(
+        'use_joy_node', default_value='true',
+        description='false = /joy comes from elsewhere (e.g. the Windows->WSL UDP '
+                    'bridge), so no joy_node is started here'
+    )
+
     world_path = os.path.join(description_pkg, 'worlds', 'gamefield.world')
     models_path = os.path.join(description_pkg, 'models')
 
@@ -49,7 +56,8 @@ def generate_launch_description():
     joystick = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([os.path.join(
             bringup_pkg, 'launch', 'joystick.launch.py'
-        )]), launch_arguments={'use_sim_time': 'true', 'namespace': namespace}.items()
+        )]), launch_arguments={'use_sim_time': 'true', 'namespace': namespace,
+                               'use_joy_node': use_joy_node}.items()
     )
 
     twist_mux_params = os.path.join(bringup_pkg, 'config', 'twist_mux.yaml')
@@ -228,6 +236,7 @@ def generate_launch_description():
     return LaunchDescription([
         declare_namespace,
         declare_headless,
+        declare_use_joy_node,
         set_gz_resource_path,
         rsp,
         joystick,

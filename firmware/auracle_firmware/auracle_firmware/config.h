@@ -85,6 +85,9 @@ constexpr uint8_t RF_MIN_PWM = 51;   // stall by eye
 constexpr float MIN_TARGET_TICKS_S = 600.0f;
 constexpr float MAX_TICKS_S        = 1200.0f;
 
+// Same-sign wheel pairs can differ by at most MAX - MIN. Beyond that, counter-rotate.
+constexpr float CMD_DEADBAND_TICKS_S = 150.0f;   // faster wheel below this = stop
+
 // --- Rear wheel controller: PI + feedforward (tuned in the auto test) ---
 constexpr float LB_KP = 0.03f;
 constexpr float LB_KI = 0.15f;    // PWM per second per (tick/s of error)

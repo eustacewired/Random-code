@@ -12,6 +12,7 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     namespace = LaunchConfiguration('namespace')
     use_joy_node = LaunchConfiguration('use_joy_node')
+    use_drive_node = LaunchConfiguration('use_drive_node')
     joy_params = os.path.join(
         get_package_share_directory('auracle_bringup'), 'config', 'joystick.yaml'
     )
@@ -39,6 +40,7 @@ def generate_launch_description():
         # topic; feeds into twist_mux -> cmd_vel_unstamped -> twist_stamper.
         remappings=[('cmd_vel', 'cmd_vel_joy')],
         output='screen',
+        condition=IfCondition(use_drive_node),
     )
 
     return LaunchDescription([
@@ -46,6 +48,9 @@ def generate_launch_description():
         DeclareLaunchArgument('namespace', default_value=''),
         DeclareLaunchArgument('use_joy_node', default_value='true',
                               description='false = /joy is published by something else'),
+        DeclareLaunchArgument('use_drive_node', default_value='true',
+                              description='false = only publish /joy (a laptop that just '
+                                          'supplies the controller; the robot runs the drive node)'),
         joy_node,
         drive_node,
     ])

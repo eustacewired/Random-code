@@ -16,27 +16,48 @@ only used when grabbing a PGM from the /map topic.
   Send a file you already have (map.pgm, or an RViz screenshot png/jpg):
       python3 dojo_map.py --server ... --team Alpha --file ~/Pictures/rviz.png
 
+  Detection (the frame the robot classified + its label) - judges can request it,
+  or the detector pushes it as soon as it decides:
+      python3 dojo_map.py --server ... --team Alpha --push detection --label plastic --confidence 0.93
+      python3 dojo_map.py --server ... --team Alpha --push detection --det-file /tmp/det.jpg --label metal
+  Live camera (Pi Camera Module 3) for the judges, served at http://<robot-ip>:8081/stream:
+      python3 dojo_map.py --server ... --team Alpha --watch --stream
+
 PGM    : grabs the OccupancyGrid on --topic (default /map) and writes it the same
          way nav2 map_saver does. Source ROS first:  source /opt/ros/jazzy/setup.bash
 Screenshot : uses whatever screenshot tool is installed (gnome-screenshot, grim,
          scrot, ImageMagick import, maim). It captures the screen, so keep RViz
          visible. If nothing works, take the screenshot yourself and use --file.
+Detection : the image comes from (first that works) --det-file, the ROS topic
+         --det-topic (sensor_msgs/CompressedImage, default /detection/image/compressed),
+         or a fresh still from the camera. The label comes from --label, else the
+         std_msgs/String topic --label-topic (default /detection/class), which may
+         hold "plastic" or "plastic:0.93". Classes: organic, plastic, metal.
+Stream : MJPEG from --stream-topic (CompressedImage jpeg, use this when your own
+         camera node already owns the camera), else Picamera2, else rpicam-vid.
+         The URL is registered with the judges automatically (--stream-url to override).
 
 Settings can also come from env vars DOJO_SERVER, DOJO_TEAM, DOJO_TOKEN.
 """
 import argparse
+import io
 import json
 import os
+import re
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PNG_MAGIC = b'\x89PNG\r\n\x1a\n'
+CLASSES = ('organic', 'plastic', 'metal')
 
 
 def log(msg):
@@ -85,6 +106,10 @@ def upload(args, data, filename, request_id=None, meta=None):
     params = {'team': args.team, 'request_id': request_id, 'filename': filename}
     params.update(meta or {})
     return call(args, 'POST', '/api/maps/upload', params, data, 'application/octet-stream')
+
+
+def register_stream(args, url):
+    call(args, 'POST', '/api/maps/stream', body=json.dumps({'team': args.team, 'url': url}).encode())
 
 
 def report_failure(args, rid, message):
@@ -172,6 +197,282 @@ def capture_screenshot():
                        'or take the RViz screenshot yourself and send it with --file')
 
 
+# ------------------------------------------------------------ camera frames
+class FrameHub:
+    """Latest JPEG frame from whichever camera source is running; HTTP clients wait on it."""
+    def __init__(self):
+        self.cond = threading.Condition()
+        self.frame, self.count, self.source = None, 0, ''
+
+    def put(self, jpg):
+        with self.cond:
+            self.frame, self.count = jpg, self.count + 1
+            self.cond.notify_all()
+
+    def wait(self, last, timeout=5.0):
+        with self.cond:
+            self.cond.wait_for(lambda: self.count != last, timeout)
+            return self.frame, self.count
+
+
+hub = FrameHub()
+
+
+def _ros_frames(topic, stop):
+    """Feed hub from a sensor_msgs/CompressedImage (jpeg) topic until stop is set."""
+    import rclpy
+    from rclpy.executors import SingleThreadedExecutor
+    from rclpy.node import Node
+    from rclpy.qos import qos_profile_sensor_data
+    from sensor_msgs.msg import CompressedImage
+    ctx = rclpy.Context()
+    rclpy.init(context=ctx)
+    try:
+        node = Node('dojo_stream', context=ctx)
+        ex = SingleThreadedExecutor(context=ctx)
+        ex.add_node(node)
+        node.create_subscription(CompressedImage, topic, lambda m: hub.put(bytes(m.data)), qos_profile_sensor_data)
+        while not stop.is_set():
+            ex.spin_once(timeout_sec=0.2)
+    finally:
+        rclpy.shutdown(context=ctx)
+
+
+def _picamera2_frames(size, stop):
+    from picamera2 import Picamera2
+    from picamera2.encoders import JpegEncoder
+    from picamera2.outputs import FileOutput
+
+    class Out(io.BufferedIOBase):
+        def write(self, buf):
+            hub.put(bytes(buf))
+            return len(buf)
+
+    cam = Picamera2()
+    cam.configure(cam.create_video_configuration(main={'size': size}))
+    cam.start_recording(JpegEncoder(q=70), FileOutput(Out()))
+    try:
+        stop.wait()
+    finally:
+        cam.stop_recording()
+        cam.close()
+
+
+def _rpicam_frames(size, stop):
+    exe = shutil.which('rpicam-vid') or shutil.which('libcamera-vid')
+    if not exe:
+        raise RuntimeError('neither picamera2 nor rpicam-vid is installed')
+    p = subprocess.Popen([exe, '-t', '0', '-n', '--codec', 'mjpeg', '--width', str(size[0]),
+                          '--height', str(size[1]), '--framerate', '15', '-o', '-'],
+                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    buf = b''
+    try:
+        while not stop.is_set():
+            chunk = p.stdout.read(65536)
+            if not chunk:
+                raise RuntimeError(f'{os.path.basename(exe)} exited (is the camera used by another process?)')
+            buf += chunk
+            while True:                      # cut complete JPEGs out of the byte stream
+                a = buf.find(b'\xff\xd8')
+                b = buf.find(b'\xff\xd9', a + 2)
+                if a < 0 or b < 0:
+                    break
+                hub.put(buf[a:b + 2])
+                buf = buf[b + 2:]
+            if len(buf) > 4 << 20:
+                buf = b''
+    finally:
+        p.terminate()
+
+
+def start_camera(args, stop):
+    """Start the first camera source that works in a background thread."""
+    size = tuple(int(v) for v in args.stream_size.lower().split('x'))
+    sources = []
+    if args.stream_topic:
+        sources.append((f'ROS topic {args.stream_topic}', lambda: _ros_frames(args.stream_topic, stop)))
+    sources += [('Picamera2', lambda: _picamera2_frames(size, stop)), ('rpicam-vid', lambda: _rpicam_frames(size, stop))]
+
+    def runner():
+        for name, fn in sources:
+            start = hub.count
+            hub.source = name
+            try:
+                log(f'camera: trying {name}')
+                fn()
+                return
+            except Exception as e:
+                if hub.count != start and not stop.is_set():
+                    log(f'camera: {name} stopped: {e}')
+                else:
+                    log(f'camera: {name} unavailable ({e})')
+        hub.source = ''
+        log('camera: no source worked - stream disabled')
+    threading.Thread(target=runner, daemon=True).start()
+
+
+class StreamHandler(BaseHTTPRequestHandler):
+    def log_message(self, fmt, *a):
+        pass
+
+    def do_GET(self):
+        path = self.path.split('?')[0]
+        if path == '/stream':
+            self.send_response(200)
+            self.send_header('Content-Type', 'multipart/x-mixed-replace; boundary=frame')
+            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            last = -1
+            try:
+                while True:
+                    frame, last = hub.wait(last)
+                    if frame is None:
+                        continue
+                    self.wfile.write(b'--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %d\r\n\r\n' % len(frame))
+                    self.wfile.write(frame + b'\r\n')
+            except (BrokenPipeError, ConnectionResetError):
+                return
+        elif path in ('/snapshot.jpg', '/snapshot'):
+            frame, _ = hub.wait(-1, 3.0)
+            if frame is None:
+                self.send_error(503, 'no camera frame yet')
+                return
+            self.send_response(200)
+            self.send_header('Content-Type', 'image/jpeg')
+            self.send_header('Content-Length', str(len(frame)))
+            self.end_headers()
+            self.wfile.write(frame)
+        else:
+            body = b'<html><body style="margin:0;background:#000"><img src="/stream" style="width:100%"></body></html>'
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+
+def own_ip(server):
+    """The address the judges' laptop can reach us on (the interface routing to it)."""
+    host = urllib.parse.urlparse(server).hostname or '8.8.8.8'
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        try:
+            s.connect((host, 80))
+            return s.getsockname()[0]
+        except OSError:
+            return socket.gethostbyname(socket.gethostname())
+
+
+def start_stream(args):
+    stop = threading.Event()
+    start_camera(args, stop)
+    srv = ThreadingHTTPServer(('0.0.0.0', args.stream_port), StreamHandler)
+    srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = args.stream_url or f'http://{own_ip(args.server)}:{args.stream_port}/stream'
+    log(f'live camera at {url}')
+    return url
+
+
+# ------------------------------------------------------- capture: detection
+def parse_label(text):
+    """'plastic', 'Plastic 0.93', 'plastic:0.93' or '{"label": .., "confidence": ..}' -> (label, conf)."""
+    text = (text or '').strip()
+    try:
+        d = json.loads(text)
+        if isinstance(d, dict):
+            return str(d.get('label', d.get('class', ''))).lower(), d.get('confidence')
+    except ValueError:
+        pass
+    m = re.match(r'([A-Za-z]+)\W*([0-9.]+)?', text)
+    if not m:
+        return '', None
+    label = m.group(1).lower()
+    label = 'metal' if label == 'other' else label
+    return label, float(m.group(2)) if m.group(2) else None
+
+
+def _ros_detection(img_topic, label_topic, timeout):
+    """Latest CompressedImage + String label from the robot's detector (None if no image)."""
+    import rclpy
+    from rclpy.executors import SingleThreadedExecutor
+    from rclpy.node import Node
+    from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+    from sensor_msgs.msg import CompressedImage
+    from std_msgs.msg import String
+    ctx = rclpy.Context()
+    rclpy.init(context=ctx)
+    try:
+        node = Node('dojo_detection_capture', context=ctx)
+        ex = SingleThreadedExecutor(context=ctx)
+        ex.add_node(node)
+        imgs, labels = [], []
+        for dur in (DurabilityPolicy.TRANSIENT_LOCAL, DurabilityPolicy.VOLATILE):
+            for rel in (ReliabilityPolicy.RELIABLE, ReliabilityPolicy.BEST_EFFORT):
+                qos = QoSProfile(depth=1, history=HistoryPolicy.KEEP_LAST, reliability=rel, durability=dur)
+                node.create_subscription(CompressedImage, img_topic, imgs.append, qos)
+                node.create_subscription(String, label_topic, labels.append, qos)
+        end = time.monotonic() + timeout
+        while not imgs and time.monotonic() < end:
+            ex.spin_once(timeout_sec=0.2)
+        end = time.monotonic() + 0.5          # the label usually arrives with the image
+        while imgs and not labels and time.monotonic() < end:
+            ex.spin_once(timeout_sec=0.1)
+        if not imgs:
+            return None
+        return bytes(imgs[-1].data), (labels[-1].data if labels else '')
+    finally:
+        rclpy.shutdown(context=ctx)
+
+
+def camera_still():
+    if hub.frame is not None:                # stream already running: reuse its frame
+        return hub.frame
+    try:
+        from picamera2 import Picamera2
+        cam = Picamera2()
+        cam.configure(cam.create_still_configuration(main={'size': (1280, 960)}))
+        cam.start()
+        time.sleep(1.0)                      # let auto-exposure settle
+        out = io.BytesIO()
+        cam.capture_file(out, format='jpeg')
+        cam.close()
+        return out.getvalue()
+    except Exception:
+        pass
+    exe = shutil.which('rpicam-still') or shutil.which('libcamera-still')
+    if exe:
+        r = subprocess.run([exe, '-n', '-t', '1000', '--width', '1280', '--height', '960', '-o', '-'],
+                           capture_output=True, timeout=20)
+        if r.returncode == 0 and r.stdout[:3] == b'\xff\xd8\xff':
+            return r.stdout
+    raise RuntimeError('no detection image: give --det-file, publish --det-topic, or attach the Pi camera')
+
+
+def capture_detection(args):
+    data, label_text = None, ''
+    if args.det_file:
+        with open(args.det_file, 'rb') as f:
+            data = f.read()
+    else:
+        try:
+            got = _ros_detection(args.det_topic, args.label_topic, min(args.timeout, 3.0))
+            if got:
+                data, label_text = got
+                log(f'detection image from {args.det_topic}')
+        except ImportError:
+            pass                              # no ROS sourced: fall back to the camera
+    if data is None:
+        log('taking a camera still for the detection')
+        data = camera_still()
+    label, conf = parse_label(args.label or label_text)
+    if args.confidence is not None:
+        conf = args.confidence
+    if label and label not in CLASSES:
+        log(f'WARNING: label "{label}" is not one of {", ".join(CLASSES)}')
+    return data, {'kind': 'detection', 'label': label, 'confidence': conf}
+
+
 # ------------------------------------------------------------------ actions
 def produce(args, kind):
     """Capture one item. Returns (bytes, filename, meta)."""
@@ -179,6 +480,10 @@ def produce(args, kind):
         log(f'grabbing map from {args.topic} ...')
         data, meta = capture_pgm(args.topic, args.timeout)
         return data, 'map.pgm', meta
+    if kind == 'detection':
+        data, meta = capture_detection(args)
+        log(f"detection: {meta['label'] or 'no label'}")
+        return data, 'detection.png' if data[:8] == PNG_MAGIC else 'detection.jpg', meta
     return capture_screenshot(), 'rviz.png', {}
 
 
@@ -213,17 +518,38 @@ def main():
     ap.add_argument('--team', default=os.environ.get('DOJO_TEAM', ''), help='your team name')
     ap.add_argument('--token', default=os.environ.get('DOJO_TOKEN', ''), help='only if the judges gave you one')
     ap.add_argument('--watch', action='store_true', help='keep running and answer every request')
-    ap.add_argument('--push', choices=['pgm', 'screenshot'], help='send now, without a request')
+    ap.add_argument('--push', choices=['pgm', 'screenshot', 'detection'], help='send now, without a request')
     ap.add_argument('--file', help='send this .pgm/.png/.jpg instead of capturing')
     ap.add_argument('--topic', default='/map', help='OccupancyGrid topic (default /map)')
     ap.add_argument('--timeout', type=float, default=10.0, help='seconds to wait for the map topic')
     ap.add_argument('--interval', type=float, default=2.0, help='poll period in --watch mode')
+    det = ap.add_argument_group('detection')
+    det.add_argument('--label', default='', help='detected class: organic, plastic or metal')
+    det.add_argument('--confidence', type=float, help='detector confidence 0..1')
+    det.add_argument('--det-file', help='image the detector classified (.jpg/.png)')
+    det.add_argument('--det-topic', default='/detection/image/compressed', help='CompressedImage topic with the classified frame')
+    det.add_argument('--label-topic', default='/detection/class', help='String topic with the detected class')
+    cam = ap.add_argument_group('live camera')
+    cam.add_argument('--stream', action='store_true', help='serve the camera as MJPEG and register it with the judges')
+    cam.add_argument('--stream-port', type=int, default=8081)
+    cam.add_argument('--stream-size', default='640x480', help='WIDTHxHEIGHT (Picamera2 / rpicam-vid)')
+    cam.add_argument('--stream-topic', default='', help='use this CompressedImage topic instead of opening the camera')
+    cam.add_argument('--stream-url', default='', help='URL to give the judges (default http://<this-ip>:PORT/stream)')
     args = ap.parse_args()
 
     if not args.server:
         ap.error('--server is required (or set DOJO_SERVER)')
     if not args.team:
         ap.error('--team is required (or set DOJO_TEAM)')
+
+    stream_url = None
+    if args.stream:
+        stream_url = start_stream(args)
+        try:
+            register_stream(args, stream_url)
+            log('stream registered with the judges')
+        except ServerError as e:
+            log(f'could not register stream yet: {e}')
 
     try:
         if args.file:
@@ -245,19 +571,28 @@ def main():
             return
         if args.push:
             data, filename, meta = produce(args, args.push)
-            rid = next((r['id'] for r in get_pending(args) if r['format'] in ('any', args.push)), None)
+            # 'any' requests are for maps only; a detection answers only a detection request
+            ok = ('detection',) if args.push == 'detection' else ('any', args.push)
+            rid = next((r['id'] for r in get_pending(args) if r['format'] in ok), None)
             send(args, data, filename, rid, meta)
-            return
+            if not args.watch and not args.stream:
+                return
 
-        if args.watch:
-            log(f'watching {args.server} as team "{args.team}" (Ctrl+C to stop)')
+        if args.watch or args.stream:
+            log(f'watching {args.server} as team "{args.team}" (Ctrl+C to stop)'
+                if args.watch else 'serving the camera (Ctrl+C to stop)')
             warned = False
+            last_reg = time.monotonic()
             while True:
                 try:
-                    pend = get_pending(args)
+                    if args.watch:
+                        pend = get_pending(args)
+                        if pend:
+                            answer(args, pend[0])
+                    if stream_url and time.monotonic() - last_reg > 30:   # survives a server restart
+                        register_stream(args, stream_url)
+                        last_reg = time.monotonic()
                     warned = False
-                    if pend:
-                        answer(args, pend[0])
                 except ServerError as e:
                     if not warned:
                         log(f'{e} - will keep retrying')

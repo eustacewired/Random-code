@@ -45,9 +45,11 @@ void SerialProtocol::sendTelemetry(unsigned long ms, long l, long r, const int16
     Serial.print('\n');
 }
 
-void SerialProtocol::sendFault(char side, uint8_t code) {
+void SerialProtocol::sendFault(char side, uint8_t code, int speed, int target) {
     Serial.print('F');
     Serial.print(' '); Serial.print(side);
     Serial.print(' '); Serial.print(code);
+    Serial.print(' '); Serial.print(speed);
+    Serial.print(' '); Serial.print(target);
     Serial.print('\n');
 }

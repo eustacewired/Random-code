@@ -4,7 +4,7 @@ Do this on every machine that runs the workspace (Pi, laptop, WSL). The `chmod` 
 chmod +x src/auracle_bringup/scripts/*.py
 rm -rf build install log && colcon build --symlink-install && source install/setup.bash
 ```
-
+  
 Everything lives in this workspace except one Windows-only file, `joy_bridge_win.py`
 (kept in `C:\my_gits\test_files`, needs `pip install pygame`).
 

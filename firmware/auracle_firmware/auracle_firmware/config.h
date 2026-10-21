@@ -125,6 +125,12 @@ constexpr uint8_t FAULT_WRONG_SIGN_COUNT = 6;      // ... for this many control 
 constexpr uint8_t FAULT_SATURATED_COUNT  = 40;     // PWM at 255 and < 80% of target for 2 s
 constexpr float   FAULT_NO_MOTION_FRAC   = 0.25f;  // wheel slower than this fraction of the ramped target ...
 constexpr uint8_t FAULT_NO_MOTION_COUNT  = 20;     // ... for 1 s = dead encoder or blocked wheel
-// Send "F <L|R> <code>" lines on a fault (1 = wrong sign, 2 = saturated, 3 = no motion). Make sure the Pi-side
+// A latched fault no longer needs a stick release to recover: if the Pi is still asking for motion
+// FAULT_RETRY_MS after the fault, the fault is cleared and the wheel is restarted from rest (kick PWM
+// again, which also beats a stiction stall). After FAULT_MAX_RETRIES in a row with no zero command in
+// between it stays latched, so a really dead encoder can't keep driving a wheel forever.
+constexpr unsigned long FAULT_RETRY_MS  = 1500;
+constexpr uint8_t       FAULT_MAX_RETRIES = 3;
+// Send "F <L|R> <code> <speed> <target>" lines on a fault (1 = wrong sign, 2 = saturated, 3 = no motion). Make sure the Pi-side
 // parser ignores lines that are not 'e ...' / 'READY', or set this to false.
 constexpr bool REPORT_FAULTS = true;

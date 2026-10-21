@@ -1,5 +1,6 @@
 #include "auracle_hardware/robot_system.hpp"
 
+#include <chrono>
 #include <cmath>
 
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
@@ -20,6 +21,16 @@ constexpr double ACCEL_SCALE = 9.80665 / 16384.0;
 constexpr double GYRO_SCALE = (M_PI / 180.0) / 131.0;
 
 constexpr int HANDSHAKE_TIMEOUT_MS = 5000;
+
+const char * faultName(int code)
+{
+  switch (code) {
+    case 1: return "WRONG_SIGN (wheel moving against the command: encoder sign/wiring)";
+    case 2: return "SATURATED (PWM at 255, target not reached: too fast for load/battery)";
+    case 3: return "NO_MOTION (PWM applied but wheel barely moves: stalled wheel or dead encoder)";
+    default: return "UNKNOWN";
+  }
+}
 
 rclcpp::Logger logger() {return rclcpp::get_logger("AuracleHardwareInterface");}
 
@@ -70,6 +81,8 @@ hardware_interface::CallbackReturn AuracleHardwareInterface::on_configure(
     RCLCPP_WARN(logger(), "No READY from %s - continuing anyway.", device_.c_str());
   }
   have_prev_ = false;
+  last_tel_time_ = std::chrono::steady_clock::now();
+  tel_gap_logged_ = false;
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -133,7 +146,29 @@ hardware_interface::return_type AuracleHardwareInterface::read(
   const rclcpp::Time &, const rclcpp::Duration &)
 {
   Telemetry tel;
-  if (!comms_.readLatest(tel)) {
+  const bool got_tel = comms_.readLatest(tel);
+
+  // Nano wheel faults: it stops all motors and ignores motion commands until it retries.
+  for (const auto & f : comms_.takeFaults()) {
+    if (f.has_detail) {
+      RCLCPP_ERROR(
+        logger(), "Nano FAULT on %c wheel: code %d %s | speed %d ticks/s, target %d ticks/s",
+        f.side, f.code, faultName(f.code), f.speed, f.target);
+    } else {
+      RCLCPP_ERROR(logger(), "Nano FAULT on %c wheel: code %d %s", f.side, f.code, faultName(f.code));
+    }
+  }
+
+  // Telemetry is 20 Hz; a gap means the serial link or the Nano is in trouble.
+  const auto now = std::chrono::steady_clock::now();
+  if (got_tel) {
+    last_tel_time_ = now;
+    tel_gap_logged_ = false;
+  } else if (!tel_gap_logged_ && now - last_tel_time_ > std::chrono::seconds(1)) {
+    RCLCPP_WARN(logger(), "No telemetry from the Nano for >1 s (serial link down or Nano stuck).");
+    tel_gap_logged_ = true;
+  }
+  if (!got_tel) {
     return hardware_interface::return_type::OK;
   }
 
@@ -148,6 +183,11 @@ hardware_interface::return_type AuracleHardwareInterface::read(
     wheels_[RL].velocity = dl / dt;
     wheels_[RR].velocity = dr / dt;
   } else {
+    if (have_prev_ && tel.t_ms < prev_.t_ms) {
+      RCLCPP_WARN(
+        logger(), "Nano clock went backwards (%u -> %u ms): it RESET (brownout, hardware watchdog "
+        "or serial reopen). Wheel odometry re-synced.", prev_.t_ms, tel.t_ms);
+    }
     wheels_[RL].velocity = 0.0;
     wheels_[RR].velocity = 0.0;
   }

@@ -11,7 +11,7 @@
 // Nano -> Pi:
 //   READY                              once after boot
 //   e <ms> <l_ticks> <r_ticks> <ax> <ay> <az> <gx> <gy> <gz>   every 50 ms
-//   F <L|R> <code>                     wheel fault, motors stopped until 's' or 'v 0 0'
+//   F <L|R> <code> <speed> <target>    wheel fault (speed = filtered 1x ticks/s, target = commanded), motors stopped until 's' or 'v 0 0'
 //                                      (1 = moving against the command, 2 = PWM saturated, target not reached,
 //                                       3 = no motion: dead encoder or blocked wheel)
 //                                      only sent when REPORT_FAULTS is true in config.h
@@ -27,7 +27,7 @@ public:
     // True once per complete line; call in a loop to drain.
     bool poll(Command& cmd);
     void sendTelemetry(unsigned long ms, long l, long r, const int16_t* imu);
-    void sendFault(char side, uint8_t code);
+    void sendFault(char side, uint8_t code, int speed, int target);
 
 private:
     static constexpr uint8_t BUF_SIZE = 32;

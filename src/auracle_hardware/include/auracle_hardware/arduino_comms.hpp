@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <string>
+#include <vector>
 #include <thread>
 
 namespace auracle_hardware
@@ -19,6 +20,16 @@ struct Telemetry
   long l_enc = 0;
   long r_enc = 0;
   int16_t imu[6] = {0, 0, 0, 0, 0, 0};  // ax ay az gx gy gz, raw counts
+};
+
+// One "F <L|R> <code> [speed target]" line: the Nano latched a wheel fault and stopped.
+struct FaultReport
+{
+  char side = '?';
+  int code = 0;
+  bool has_detail = false;
+  int speed = 0;    // filtered 1x ticks/s at the time of the fault
+  int target = 0;   // commanded 1x ticks/s
 };
 
 class ArduinoComms
@@ -83,6 +94,11 @@ public:
       rx_[nl] = '\0';  // sscanf stops here
       if (rx_[start] == 'e') {
         got |= parse(rx_.c_str() + start, out);
+      } else if (rx_[start] == 'F') {
+        FaultReport f;
+        if (parseFault(rx_.c_str() + start, f)) {
+          faults_.push_back(f);
+        }
       }
       start = nl + 1;
     }
@@ -93,7 +109,29 @@ public:
     return got;
   }
 
+  // Faults received since the last call (the Nano sends one "F" line per fault).
+  std::vector<FaultReport> takeFaults()
+  {
+    std::vector<FaultReport> out;
+    out.swap(faults_);
+    return out;
+  }
+
 private:
+  static bool parseFault(const char * line, FaultReport & out)
+  {
+    FaultReport f;
+    char side = 0;
+    int n = std::sscanf(line, "F %c %d %d %d", &side, &f.code, &f.speed, &f.target);
+    if (n < 2) {
+      return false;
+    }
+    f.side = side;
+    f.has_detail = (n == 4);
+    out = f;
+    return true;
+  }
+
   void fill()
   {
     try {
@@ -133,6 +171,7 @@ private:
 
   LibSerial::SerialPort port_;
   std::string rx_;
+  std::vector<FaultReport> faults_;
 };
 
 }  // namespace auracle_hardware

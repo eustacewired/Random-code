@@ -37,6 +37,8 @@ SerialProtocol link;
 
 Mode mode = MODE_PID;
 bool faultLatched = false;
+unsigned long faultMs = 0;       // when the fault latched
+uint8_t faultRetries = 0;        // auto-restarts since the last zero command
 float targetL = 0, targetR = 0;  // 1x ticks/s
 int pwmL = 0, pwmR = 0;          // open loop
 unsigned long lastCmdMs = 0, lastCtrlMs = 0, lastSampleUs = 0;
@@ -98,14 +100,18 @@ void apply(MotorDriver& side, const DriveCmd& c) {
 }
 
 // A latched fault stops everything until the Pi sends 's' or a zero velocity command.
+float faultTargetL = 0, faultTargetR = 0;   // targets at the moment of the fault (for the report)
 void checkFaults() {
     Fault fl = leftPid.fault(), fr = rightPid.fault();
     if (fl == FAULT_NONE && fr == FAULT_NONE) return;
+    faultTargetL = targetL;
+    faultTargetR = targetR;
     faultLatched = true;
-    stopAll();
+    faultMs = millis();
+    stopAll();   // zeroes targetL/R, so grab the commanded values first
     if (REPORT_FAULTS) {
-        if (fl != FAULT_NONE) link.sendFault('L', fl);
-        if (fr != FAULT_NONE) link.sendFault('R', fr);
+        if (fl != FAULT_NONE) link.sendFault('L', fl, (int)leftPid.speed(), (int)faultTargetL);
+        if (fr != FAULT_NONE) link.sendFault('R', fr, (int)rightPid.speed(), (int)faultTargetR);
     }
 }
 
@@ -114,11 +120,17 @@ void handle(const Command& cmd) {
         case 'v': {
             float tl = cmd.a, tr = cmd.b;
             conditionTargets(tl, tr);
+            if (tl == 0 && tr == 0) faultRetries = 0;    // a real stop request re-arms the retries
             if (faultLatched) {
-                if (tl != 0 || tr != 0) break;   // stay stopped while the Pi keeps asking for motion
-                faultLatched = false;            // a zero command (key released) clears the fault
+                bool retry = (tl != 0 || tr != 0) && faultRetries < FAULT_MAX_RETRIES &&
+                             millis() - faultMs >= FAULT_RETRY_MS;
+                if ((tl != 0 || tr != 0) && !retry) break;   // stay stopped (cooling down / out of retries)
+                if (retry) faultRetries++;
+                faultLatched = false;            // zero command or retry: clear and restart from rest
                 leftPid.clearFault();
                 rightPid.clearFault();
+                leftPid.reset();
+                rightPid.reset();
             }
             lastCmdMs = millis();
             targetL = tl;
@@ -144,6 +156,7 @@ void handle(const Command& cmd) {
             break;
         case 's':
             faultLatched = false;
+            faultRetries = 0;
             leftPid.clearFault();
             rightPid.clearFault();
             stopAll();

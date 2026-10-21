@@ -2,6 +2,7 @@
 #define AURACLE_HARDWARE_ROBOT_SYSTEM_HPP
 
 #include <array>
+#include <chrono>
 #include <string>
 #include <vector>
 
@@ -44,6 +45,8 @@ private:
 
   bool have_prev_ = false;
   Telemetry prev_;
+  std::chrono::steady_clock::time_point last_tel_time_ = std::chrono::steady_clock::now();
+  bool tel_gap_logged_ = false;
 };
 
 }  // namespace auracle_hardware

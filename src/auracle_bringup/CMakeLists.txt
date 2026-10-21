@@ -13,6 +13,7 @@ install(DIRECTORY
 install(PROGRAMS
   scripts/joy_drive.py
   scripts/joy_udp_node.py
+  scripts/dojo_map.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -35,7 +35,11 @@ def generate_launch_description():
         executable='joy_drive.py',
         name='joy_drive_node',
         namespace=namespace,
-        parameters=[joy_params, {'use_sim_time': use_sim_time}],
+        # Deliberately NOT on sim time: the smoothing filters and the 50 Hz publish
+        # timer must run on the wall clock, otherwise a Gazebo real-time factor below
+        # 1.0 stretches every time constant and makes the controller feel laggy.
+        # (On the real robot use_sim_time is false anyway, so nothing changes there.)
+        parameters=[joy_params, {'use_sim_time': False}],
         # twist_mux.yaml expects the joystick's twist on this relative
         # topic; feeds into twist_mux -> cmd_vel_unstamped -> twist_stamper.
         remappings=[('cmd_vel', 'cmd_vel_joy')],

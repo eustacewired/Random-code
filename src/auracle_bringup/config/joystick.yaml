@@ -6,6 +6,10 @@
 
 # Game-style driving node (scripts/joy_drive.py). Replaces teleop_twist_joy.
 # NOTE: yaml types must match: whole numbers for indices, decimals (1.0) for floats.
+# This one file is used by BOTH the sim and the real robot, so every value here
+# has to be right for both. The drive node itself always runs on the wall clock
+# (joystick.launch.py forces use_sim_time:=False for it), so none of the timing
+# below stretches when Gazebo runs slower than real time.
 /**/joy_drive_node:
   ros__parameters:
     # Which control schemes are live. Remove one to disable it.
@@ -26,9 +30,16 @@
     speed_repeat_rate: 6.0    # steps/s while held
 
     # --- Smoothness ---
-    publish_rate: 20.0   # diff_cont only runs at 20 Hz on the real robot; a 50 Hz Python timer is wasted Pi CPU
-    smoothing_linear: 0.12    # s. Bigger = smoother but lazier (about 4x this to reach 90 %).
-    smoothing_angular: 0.15
+    # Matches the real robot's controller_manager update_rate (20 Hz, set in
+    # my_controllers_real.yaml). The sim's base update_rate is 30 Hz, so it sees a
+    # 20 Hz stream; that is harmless because the commands are already smooth ramps.
+    # If you ever change update_rate on the robot, change this to match.
+    publish_rate: 20.0
+    # Time constant of EACH of two cascaded filters. ~4x this to reach 90 % speed
+    # (about 200 ms at 20 Hz). Was 0.12 / 0.15, which took ~400 ms and felt laggy.
+    # Bigger = smoother but lazier.
+    smoothing_linear: 0.07    # s
+    smoothing_angular: 0.09   # s
     decel_ratio: 0.7          # braking is a bit quicker than accelerating (1.0 = same)
     max_accel_linear: 0.55    # keep BELOW diff_cont's 0.6 so it never clamps (steppy)
     max_accel_angular: 2.8    # keep BELOW diff_cont's 3.0

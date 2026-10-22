@@ -22,9 +22,9 @@ To confirm in a separate terminal
 ```
 ros2 control list_controllers          # diff_cont must show "active". If any inactive, launch with ros2 run controller_manager spawner diff_cont
 ```
-**Terminal 2 (SLAM, NAV2, Rviz)**
+**Terminal 2 (SLAM, Rviz)**
 ```
-source install/setup.bash && ros2 launch auracle_bringup slam_mapping.launch.py use_sim_time:=trueuse_sim_time:=true
+source install/setup.bash && ros2 launch auracle_bringup slam_mapping.launch.py use_sim_time:=true
 ```
 **Terminal 3 (Teleop, keyboard)**
 ```

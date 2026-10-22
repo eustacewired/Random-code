@@ -41,7 +41,9 @@
     <joint name="chassis_joint" type="fixed">
         <parent link="base_link"/>
         <child link="chassis"/>
-        <origin xyz="0 0 0"/>
+        <!-- base_link sits on the WHEEL AXLE (the rotation centre of a diff drive). It used to be the rear edge of the chassis,
+             0.15 m behind the axle, which made odometry, SLAM, AMCL and Nav2 footprint checks all assume the wrong pivot. -->
+        <origin xyz="${-chassis_length/2} 0 0"/>
     </joint>
 
     <link name="chassis">
@@ -74,7 +76,7 @@
     <joint name="left_wheel_rocker_joint" type="fixed">
         <parent link="base_link"/>
         <child link="left_rocker"/>
-        <origin xyz="${chassis_length/2} ${chassis_width/2+rocker_width/2} 0" rpy="0 0 ${pi/2}" />
+        <origin xyz="0 ${chassis_width/2+rocker_width/2} 0" rpy="0 0 ${pi/2}" />
     </joint>
 
     <link name="left_rocker">
@@ -298,7 +300,7 @@
     <joint name="right_wheel_rocker_joint" type="fixed">
         <parent link="base_link"/>
         <child link="right_rocker"/>
-        <origin xyz="${chassis_length/2} ${-chassis_width/2-rocker_width/2} 0" rpy="0 0 ${pi/2}" />
+        <origin xyz="0 ${-chassis_width/2-rocker_width/2} 0" rpy="0 0 ${pi/2}" />
     </joint>
 
     <link name="right_rocker">

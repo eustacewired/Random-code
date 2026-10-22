@@ -1,9 +1,11 @@
 amcl:
   ros__parameters:
     set_initial_pose: false     # <-- default OFF for hardware safety
+    # Sim only (set_initial_pose is forced true by localization.launch.py when use_sim_time:=true).
+    # Spawn pose (-1.18, 2.20, yaw 1.57 in Gazebo) expressed in map_1.yaml's frame = start chamber, upper right.
     initial_pose:
-      x: 0.0
-      y: 0.0
+      x: 0.40
+      y: 0.08
       z: 0.0
       yaw: 0.0
     alpha1: 0.2
@@ -36,8 +38,8 @@ amcl:
     sigma_hit: 0.2
     tf_broadcast: true
     transform_tolerance: 1.0
-    update_min_a: 0.2
-    update_min_d: 0.25
+    update_min_a: 0.15
+    update_min_d: 0.10   # maze is only 6x3 m; 0.25 m between updates let the pose lag in corridors
     z_hit: 0.5
     z_max: 0.05
     z_rand: 0.5
@@ -80,13 +82,13 @@ controller_server:
     # Progress checker parameters
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.3
-      movement_time_allowance: 15.0
+      required_movement_radius: 0.1
+      movement_time_allowance: 25.0
     general_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.25
-      yaw_goal_tolerance: 0.25
+      xy_goal_tolerance: 0.20
+      yaw_goal_tolerance: 3.14   # ignore final heading: in 0.43 m corridors there is no room for a final spin
     FollowPath:
       # ---- Regulated Pure Pursuit: far cheaper than MPPI, and it can be given a MINIMUM speed.
       # Firmware reality (config.h): a wheel target below MIN_TARGET_TICKS_S=600 is a STOP.
@@ -95,25 +97,25 @@ controller_server:
       # Max is diff_cont's clamp in my_controllers_real.yaml (0.25 m/s, 1.5 rad/s).
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
       desired_linear_vel: 0.22
-      lookahead_dist: 0.45
-      min_lookahead_dist: 0.3
-      max_lookahead_dist: 0.7
+      lookahead_dist: 0.30   # was 0.45: a long lookahead cuts corners and clips walls in 0.43 m corridors
+      min_lookahead_dist: 0.2
+      max_lookahead_dist: 0.4
       lookahead_time: 1.5
       use_velocity_scaled_lookahead_dist: false
       transform_tolerance: 0.5
       use_regulated_linear_velocity_scaling: true
-      regulated_linear_scaling_min_radius: 0.6
+      regulated_linear_scaling_min_radius: 0.4
       regulated_linear_scaling_min_speed: 0.14     # never slow below what the Nano can actually drive
       use_cost_regulated_linear_velocity_scaling: false
       min_approach_linear_velocity: 0.14
       approach_velocity_scaling_dist: 0.5
       use_collision_detection: true
       max_allowed_time_to_collision_up_to_carrot: 1.0
-      use_rotate_to_heading: true
+      use_rotate_to_heading: false   # RPP ignores allow_reversing when this is true; reversing suits the maze better than spinning
       rotate_to_heading_angular_vel: 1.1            # must stay above ~1.0 rad/s (right wheel min speed)
       rotate_to_heading_min_angle: 0.6
       max_angular_accel: 3.0                        # = diff_cont angular accel limit
-      allow_reversing: false
+      allow_reversing: true
       #
       # ---- To go back to MPPI, use lighter settings than before (still heavy on a Pi):
       # plugin: "nav2_mppi_controller::MPPIController"
@@ -137,12 +139,13 @@ local_costmap:
       width: 3
       height: 3
       resolution: 0.05
-      robot_radius: 0.22
+      footprint: "[[0.16, 0.13], [0.16, -0.13], [-0.16, -0.13], [-0.16, 0.13]]"   # chassis 0.30 x 0.20 + wheels, 1 cm pad, centred on the wheel axle (base_footprint)
+      footprint_padding: 0.0
       plugins: ["obstacle_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 5.0
-        inflation_radius: 0.35
+        cost_scaling_factor: 6.0
+        inflation_radius: 0.30   # corridors in the map are only ~0.43 m wide
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
@@ -169,7 +172,8 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_footprint
-      robot_radius: 0.22
+      footprint: "[[0.16, 0.13], [0.16, -0.13], [-0.16, -0.13], [-0.16, 0.13]]"
+      footprint_padding: 0.0
       resolution: 0.05
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
@@ -192,8 +196,8 @@ global_costmap:
         map_subscribe_transient_local: True
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 5.0
-        inflation_radius: 0.35
+        cost_scaling_factor: 6.0
+        inflation_radius: 0.30   # corridors in the map are only ~0.43 m wide
       always_send_full_costmap: True
 
 # The yaml_filename does not need to be specified since it going to be set by defaults in launch.

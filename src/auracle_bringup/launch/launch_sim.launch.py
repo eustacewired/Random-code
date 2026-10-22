@@ -109,8 +109,8 @@ def generate_launch_description():
         arguments=[
             '-topic', 'robot_description',
             '-name', 'my_bot',
-            '-x', '-1.1',
-            '-y', '1.8',
+            '-x', '-1.18',
+            '-y', '2.20',   # upper-right start chamber; base_link is the wheel axle, 0.20 m clear of walls
             '-z', '0.08',
             '-R', '0.0',
             '-P', '0.0',

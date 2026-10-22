@@ -12,7 +12,7 @@
 /**/diff_cont:
   ros__parameters:
     tf_frame_prefix_enable: false
-    publish_rate: 30.0
+    publish_rate: 20.0
     base_frame_id: base_footprint
     odom_frame_id: odom
 

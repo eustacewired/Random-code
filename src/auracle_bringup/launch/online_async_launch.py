@@ -1,83 +1,121 @@
 import os
 
-from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, LogInfo
-from launch.conditions import UnlessCondition
-from launch.substitutions import LaunchConfiguration, PythonExpression
-from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
-from nav2_common.launch import HasNodeParams
+
+from launch import LaunchDescription
+from launch.actions import (
+    DeclareLaunchArgument, EmitEvent, LogInfo, RegisterEventHandler,
+)
+from launch.conditions import IfCondition
+from launch.events import matches_action
+from launch.substitutions import (
+    AndSubstitution, LaunchConfiguration, NotSubstitution,
+)
+from launch_ros.actions import LifecycleNode, Node
+from launch_ros.event_handlers import OnStateTransition
+from launch_ros.events.lifecycle import ChangeState
+from lifecycle_msgs.msg import Transition
+from nav2_common.launch import RewrittenYaml
 
 
 def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     namespace = LaunchConfiguration('namespace')
     params_file = LaunchConfiguration('params_file')
-    default_params_file = os.path.join(get_package_share_directory('auracle_bringup'),
-                                       'config', 'mapper_params_online_async.yaml')
+    autostart = LaunchConfiguration('autostart')
+    use_lifecycle_manager = LaunchConfiguration('use_lifecycle_manager')
 
-    declare_use_sim_time_argument = DeclareLaunchArgument(
-        'use_sim_time',
-        default_value='true',
+    default_params_file = os.path.join(
+        get_package_share_directory('auracle_bringup'),
+        'config', 'mapper_params_online_async.yaml')
+
+    declare_use_sim_time = DeclareLaunchArgument(
+        'use_sim_time', default_value='true',
         description='Use simulation/Gazebo clock')
-    declare_namespace_argument = DeclareLaunchArgument(
-        'namespace',
-        default_value='',
-        description=('Top-level namespace. slam_toolbox has no namespace support of '
-                     'its own upstream, so this is applied directly on the Node below. '
-                     'mapper_params_online_async.yaml\'s scan_topic is relative ("scan") '
-                     'specifically so it resolves under this namespace.'))
-    declare_params_file_cmd = DeclareLaunchArgument(
-        'params_file',
-        default_value=default_params_file,
-        description='Full path to the ROS2 parameters file to use for the slam_toolbox node')
+    declare_namespace = DeclareLaunchArgument(
+        'namespace', default_value='',
+        description='Top-level namespace (e.g. auracle on the real robot).')
+    declare_params_file = DeclareLaunchArgument(
+        'params_file', default_value=default_params_file,
+        description='Full path to the slam_toolbox parameter file')
+    declare_autostart = DeclareLaunchArgument(
+        'autostart', default_value='true',
+        description='Configure + activate slam_toolbox automatically')
+    declare_use_lifecycle_manager = DeclareLaunchArgument(
+        'use_lifecycle_manager', default_value='false',
+        description=('false (default) = launch drives configure/activate itself, no bond '
+                     'heartbeat, so a loaded Pi cannot get SLAM torn down and restarted. '
+                     'true = old behaviour: nav2 lifecycle_manager_slam.'))
 
-    # If the provided param file doesn't have slam_toolbox params, we must pass the
-    # default_params_file instead. This could happen due to automatic propagation of
-    # LaunchArguments. See:
-    # https://github.com/ros-planning/navigation2/pull/2243#issuecomment-800479866
-    has_node_params = HasNodeParams(source_file=params_file,
-                                    node_name='slam_toolbox')
+    # slam_toolbox's yaml key is a bare "slam_toolbox:", which only matches the node
+    # /slam_toolbox. With namespace:=auracle the node is /auracle/slam_toolbox, so the
+    # file was silently NOT applied (defaults used instead of mapper_params_online_async.yaml).
+    # RewrittenYaml nests the file under the namespace, exactly like the Nav2 launches do.
+    configured_params = RewrittenYaml(
+        source_file=params_file,
+        root_key=namespace,
+        param_rewrites={},
+        convert_types=True)
 
-    actual_params_file = PythonExpression(['"', params_file, '" if ', has_node_params,
-                                           ' else "', default_params_file, '"'])
-
-    log_param_change = LogInfo(msg=['provided params_file ',  params_file,
-                                    ' does not contain slam_toolbox parameters. Using default: ',
-                                    default_params_file],
-                               condition=UnlessCondition(has_node_params))
-
-    start_async_slam_toolbox_node = Node(
-        parameters=[
-          actual_params_file,
-          {'use_sim_time': use_sim_time,
-           'use_lifecycle_manager': True}
-        ],
+    slam_node = LifecycleNode(
         package='slam_toolbox',
         executable='async_slam_toolbox_node',
         name='slam_toolbox',
         namespace=namespace,
-        remappings=[('/tf', 'tf'), ('/tf_static', 'tf_static'), ('/scan', 'scan'),
-            ('/map', 'map'), ('/map_metadata', 'map_metadata')],
-        output='screen')
+        output='screen',
+        parameters=[
+            configured_params,
+            {'use_sim_time': use_sim_time,
+             'use_lifecycle_manager': use_lifecycle_manager},
+        ],
+        remappings=[('/tf', 'tf'), ('/tf_static', 'tf_static'),
+                    ('/scan', 'scan'), ('/map', 'map'),
+                    ('/map_metadata', 'map_metadata')],
+    )
 
-    start_lifecycle_manager = Node(
+    drive_it_ourselves = IfCondition(
+        AndSubstitution(autostart, NotSubstitution(use_lifecycle_manager)))
+
+    configure_event = EmitEvent(
+        event=ChangeState(
+            lifecycle_node_matcher=matches_action(slam_node),
+            transition_id=Transition.TRANSITION_CONFIGURE),
+        condition=drive_it_ourselves)
+
+    activate_event = RegisterEventHandler(
+        OnStateTransition(
+            target_lifecycle_node=slam_node,
+            start_state='configuring',
+            goal_state='inactive',
+            entities=[
+                LogInfo(msg='[slam] slam_toolbox configured, activating.'),
+                EmitEvent(event=ChangeState(
+                    lifecycle_node_matcher=matches_action(slam_node),
+                    transition_id=Transition.TRANSITION_ACTIVATE)),
+            ]),
+        condition=drive_it_ourselves)
+
+    # Optional old path. bond_timeout 0.0 disables the heartbeat check entirely.
+    lifecycle_manager = Node(
         package='nav2_lifecycle_manager',
         executable='lifecycle_manager',
         name='lifecycle_manager_slam',
         namespace=namespace,
         output='screen',
-        parameters=[{'autostart': True},
-                    {'node_names': ['slam_toolbox']},
-                    {'use_sim_time': use_sim_time}])
+        parameters=[{'autostart': True,
+                     'node_names': ['slam_toolbox'],
+                     'bond_timeout': 0.0,
+                     'use_sim_time': use_sim_time}],
+        condition=IfCondition(use_lifecycle_manager))
 
-    ld = LaunchDescription()
-
-    ld.add_action(declare_use_sim_time_argument)
-    ld.add_action(declare_namespace_argument)
-    ld.add_action(declare_params_file_cmd)
-    ld.add_action(log_param_change)
-    ld.add_action(start_async_slam_toolbox_node)
-    ld.add_action(start_lifecycle_manager)
-
-    return ld
+    return LaunchDescription([
+        declare_use_sim_time,
+        declare_namespace,
+        declare_params_file,
+        declare_autostart,
+        declare_use_lifecycle_manager,
+        slam_node,
+        activate_event,
+        configure_event,
+        lifecycle_manager,
+    ])

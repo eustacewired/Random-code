@@ -1,8 +1,8 @@
 /**/ekf_filter_node:
     ros__parameters:
-        frequency: 30.0
+        frequency: 20.0   # matches the 20 Hz Nano telemetry / controller_manager rate on the real robot
         two_d_mode: true
-        print_diagnostics: true
+        print_diagnostics: false
         debug: false
         publish_tf: true
 

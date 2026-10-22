@@ -26,7 +26,7 @@
     speed_repeat_rate: 6.0    # steps/s while held
 
     # --- Smoothness ---
-    publish_rate: 50.0
+    publish_rate: 20.0   # diff_cont only runs at 20 Hz on the real robot; a 50 Hz Python timer is wasted Pi CPU
     smoothing_linear: 0.12    # s. Bigger = smoother but lazier (about 4x this to reach 90 %).
     smoothing_angular: 0.15
     decel_ratio: 0.7          # braking is a bit quicker than accelerating (1.0 = same)

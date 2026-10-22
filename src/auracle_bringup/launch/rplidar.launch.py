@@ -32,6 +32,10 @@ def generate_launch_description():
         name='rplidar_node',
         namespace=namespace,
         output='screen',
+        # The A1 on a Pi USB port drops out now and then (power dip, cable). Without
+        # respawn the node exits once and /scan stays silent for the rest of the run.
+        respawn=True,
+        respawn_delay=2.0,
         parameters=[{
             'serial_port': serial_port,
             'serial_baudrate': 115200,

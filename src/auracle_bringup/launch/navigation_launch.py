@@ -146,6 +146,9 @@ def generate_launch_description():
             output='screen',
             parameters=[{'use_sim_time': use_sim_time},
                         {'autostart': autostart},
-                        {'node_names': lifecycle_nodes}]),
+                        {'node_names': lifecycle_nodes},
+                        # default 4 s: a Pi at 100% CPU / thermal throttling can miss it, and the
+                        # manager then tears the Nav2 stack down and restarts it.
+                        {'bond_timeout': 10.0}]),
 
     ])

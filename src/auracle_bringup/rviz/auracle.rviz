@@ -1,3 +1,5 @@
+# __NS__ is replaced by localization_nav_rviz.launch.py with "" or "/<namespace>".
+# Do not open directly with `rviz2 -d` unless you replace __NS__ by hand.
 Panels:
   - Class: rviz_common/Displays
     Name: Displays
@@ -21,13 +23,13 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /map
+        Value: __NS__/map
       Update Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /map_updates
+        Value: __NS__/map_updates
       Use Timestamp: false
     - Class: rviz_default_plugins/Map
       Name: Global Costmap
@@ -42,13 +44,13 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /global_costmap/costmap
+        Value: __NS__/global_costmap/costmap
       Update Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /global_costmap/costmap_updates
+        Value: __NS__/global_costmap/costmap_updates
       Use Timestamp: false
     - Class: rviz_default_plugins/Map
       Name: Local Costmap
@@ -63,13 +65,13 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /local_costmap/costmap
+        Value: __NS__/local_costmap/costmap
       Update Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /local_costmap/costmap_updates
+        Value: __NS__/local_costmap/costmap_updates
       Use Timestamp: false
     - Class: rviz_default_plugins/RobotModel
       Name: RobotModel
@@ -81,7 +83,7 @@ Visualization Manager:
         Durability Policy: Transient Local
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /robot_description
+        Value: __NS__/robot_description
     - Class: rviz_default_plugins/LaserScan
       Name: LaserScan
       Enabled: true
@@ -97,7 +99,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Best Effort
-        Value: /scan
+        Value: __NS__/scan
     - Class: nav2_rviz_plugins/ParticleCloud
       Name: ParticleCloud
       Enabled: true
@@ -107,7 +109,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Best Effort
-        Value: /particle_cloud
+        Value: __NS__/particle_cloud
     - Class: rviz_default_plugins/Path
       Name: GlobalPlan
       Enabled: true
@@ -118,7 +120,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /plan
+        Value: __NS__/plan
     - Class: rviz_default_plugins/TF
       Name: TF
       Enabled: false
@@ -138,7 +140,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /initialpose
+        Value: __NS__/initialpose
     - Class: nav2_rviz_plugins/GoalTool
   Value: true
   Views:

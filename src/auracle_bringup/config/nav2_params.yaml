@@ -100,7 +100,7 @@ controller_server:
       max_lookahead_dist: 0.7
       lookahead_time: 1.5
       use_velocity_scaled_lookahead_dist: false
-      transform_tolerance: 0.2
+      transform_tolerance: 0.5
       use_regulated_linear_velocity_scaling: true
       regulated_linear_scaling_min_radius: 0.6
       regulated_linear_scaling_min_speed: 0.14     # never slow below what the Nano can actually drive
@@ -313,7 +313,7 @@ collision_monitor:
     cmd_vel_in_topic: "cmd_vel_smoothed"
     cmd_vel_out_topic: "cmd_vel"
     state_topic: "collision_monitor_state"
-    transform_tolerance: 0.2
+    transform_tolerance: 0.5
     source_timeout: 1.0
     base_shift_correction: True
     stop_pub_timeout: 2.0

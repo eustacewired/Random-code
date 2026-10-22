@@ -24,7 +24,7 @@ ros2 control list_controllers          # diff_cont must show "active". If any in
 ```
 **Terminal 2 (SLAM, NAV2, Rviz)**
 ```
-source install/setup.bash && ros2 launch auracle_bringup slam_nav_rviz.launch.py use_sim_time:=true
+source install/setup.bash && ros2 launch auracle_bringup slam_mapping.launch.py use_sim_time:=trueuse_sim_time:=true
 ```
 **Terminal 3 (Teleop, keyboard)**
 ```
@@ -147,9 +147,9 @@ Confirm topics and services are live with `ros2 topic list` and `ros2 service li
 source install/setup.bash && ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=cmd_vel_joy -r __ns:=/auracle
 ```
 
-**SLAM + Nav2 + RViz** (run on the laptop, same `ROS_DOMAIN_ID`)
+**SLAM + RViz** (run on the laptop, same `ROS_DOMAIN_ID`)
 ```
-source install/setup.bash && ros2 launch auracle_bringup slam_nav_rviz.launch.py use_sim_time:=false namespace:=auracle
+source install/setup.bash && ros2 launch auracle_bringup slam_mapping.launch.py namespace:=auracle
 ```
 
 # Controller teleop
@@ -210,3 +210,12 @@ Put the robot on blocks, wheels off the floor, and check:
 - Hold LT + RT, then Ctrl-C the bridge: the wheels stop within about a second.
 - Hold LT + RT, then switch the controller off: note how long the wheels keep going.
 - Hold LT + RT, then cut the network: the wheels stop.
+
+** Save the map **
+```
+ros2 run nav2_map_server map_saver_cli -f ~/map_2 --ros-args -r map:=/auracle/map
+```
+
+# navigation againts saved 
+ros2 launch auracle_bringup localization_nav_rviz.launch.py namespace:=auracle \
+  map:=~/map_2.yaml

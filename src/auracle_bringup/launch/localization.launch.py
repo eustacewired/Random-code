@@ -89,7 +89,7 @@ def generate_launch_description():
             name='map_server',
             namespace=namespace,
             output='screen',
-            parameters=[configured_params],
+            parameters=[configured_params, {'use_sim_time': use_sim_time}],
             remappings=remappings),
 
         Node(
@@ -98,7 +98,7 @@ def generate_launch_description():
             name='amcl',
             namespace=namespace,
             output='screen',
-            parameters=[configured_params],
+            parameters=[configured_params, {'use_sim_time': use_sim_time}],
             remappings=remappings),
 
         Node(

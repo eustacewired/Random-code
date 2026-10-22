@@ -98,7 +98,7 @@ def generate_launch_description():
             executable='controller_server',
             namespace=namespace,
             output='screen',
-            parameters=[configured_params],
+            parameters=[configured_params, {'use_sim_time': use_sim_time}],
             remappings=remappings + [('cmd_vel', 'cmd_vel_nav')],
             ),
 
@@ -108,7 +108,7 @@ def generate_launch_description():
             name='planner_server',
             namespace=namespace,
             output='screen',
-            parameters=[configured_params],
+            parameters=[configured_params, {'use_sim_time': use_sim_time}],
             remappings=remappings),
 
         Node(
@@ -117,7 +117,7 @@ def generate_launch_description():
             name='behavior_server',
             namespace=namespace,
             output='screen',
-            parameters=[configured_params],
+            parameters=[configured_params, {'use_sim_time': use_sim_time}],
             remappings=remappings),
 
         Node(
@@ -126,7 +126,7 @@ def generate_launch_description():
             name='bt_navigator',
             namespace=namespace,
             output='screen',
-            parameters=[configured_params],
+            parameters=[configured_params, {'use_sim_time': use_sim_time}],
             remappings=remappings),
 
         Node(
@@ -135,7 +135,7 @@ def generate_launch_description():
             name='waypoint_follower',
             namespace=namespace,
             output='screen',
-            parameters=[configured_params],
+            parameters=[configured_params, {'use_sim_time': use_sim_time}],
             remappings=remappings),
 
         Node(

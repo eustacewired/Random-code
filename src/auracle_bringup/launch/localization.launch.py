@@ -47,8 +47,10 @@ def generate_launch_description():
     param_substitutions = {
         'use_sim_time': use_sim_time,
         'yaml_filename': map_yaml_file,
-        'set_initial_pose': PythonExpression(
-            ["'true' if '", use_sim_time, "' == 'true' else 'false'"]),
+        # Always start AMCL at initial_pose from nav2_params.yaml (map_1 start chamber). Without a
+        # pose the global costmap times out at activation and Nav2 aborts its whole bringup.
+        # Correct it with RViz '2D Pose Estimate'.
+        'set_initial_pose': 'true',
     }
 
     configured_params = RewrittenYaml(

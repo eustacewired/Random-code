@@ -1,7 +1,7 @@
 amcl:
   ros__parameters:
     # Tuned 2026-10-23: trust the lidar much more than wheel odometry (no IMU). Old: ~/auracle_tools/runs/nav2_params_before_tuning.yaml
-    set_initial_pose: false     # <-- default OFF for hardware safety
+    set_initial_pose: true      # start at map_1 start chamber (initial_pose below) so Nav2 always comes up; fix with 2D Pose Estimate
     # Sim only (set_initial_pose is forced true by localization.launch.py when use_sim_time:=true).
     # Spawn pose (-1.18, 2.20, yaw 1.57 in Gazebo) expressed in map_1.yaml's frame = start chamber, upper right.
     initial_pose:

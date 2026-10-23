@@ -74,7 +74,13 @@ def kind_of(data):
 
 # ------------------------------------------------------------------ HTTP
 class ServerError(Exception):
-    pass
+    def __init__(self, msg, code=None):
+        super().__init__(msg)
+        self.code = code
+
+
+# ignore http_proxy/https_proxy env vars: a team's proxy must not sit between us and the judges
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def call(args, method, path, params=None, body=None, content_type='application/json'):
@@ -86,14 +92,14 @@ def call(args, method, path, params=None, body=None, content_type='application/j
         headers['Content-Type'] = content_type
     req = urllib.request.Request(url, data=body, method=method, headers=headers)
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with _OPENER.open(req, timeout=30) as resp:
             return json.loads(resp.read().decode() or '{}')
     except urllib.error.HTTPError as e:
         try:
             detail = json.loads(e.read().decode()).get('detail', e.reason)
         except Exception:
             detail = e.reason
-        raise ServerError(f'server said {e.code}: {detail}')
+        raise ServerError(f'server said {e.code}: {detail}', e.code)
     except (urllib.error.URLError, OSError) as e:
         raise ServerError(f'cannot reach {args.server} ({getattr(e, "reason", e)})')
 
@@ -512,6 +518,78 @@ def answer(args, req):
     return False
 
 
+
+# ------------------------------------------------------------ send a file
+def read_sidecar(pgm_path):
+    """resolution / origin from the map_saver .yaml next to a .pgm (optional)."""
+    meta = {}
+    base = os.path.splitext(pgm_path)[0]
+    for cand in (base + '.yaml', base + '.yml'):
+        try:
+            text = open(cand).read()
+        except OSError:
+            continue
+        m = re.search(r'^resolution:\s*([-0-9.eE]+)', text, re.M)
+        if m:
+            meta['resolution'] = float(m.group(1))
+        m = re.search(r'^origin:\s*\[\s*([-0-9.eE]+)\s*,\s*([-0-9.eE]+)', text, re.M)
+        if m:
+            meta['origin_x'], meta['origin_y'] = float(m.group(1)), float(m.group(2))
+        break
+    return meta
+
+
+def send_file(args):
+    path = os.path.abspath(os.path.expanduser(args.file))
+    if os.path.splitext(path)[1].lower() in ('.yaml', '.yml'):      # they gave the map_saver yaml
+        for ext in ('.pgm', '.png'):
+            cand = os.path.splitext(path)[0] + ext
+            if os.path.exists(cand):
+                log(f'{os.path.basename(path)} is the yaml - sending {os.path.basename(cand)} instead')
+                path = cand
+                break
+    if not os.path.isfile(path):
+        sys.exit(f'error: file not found: {path}')
+    with open(path, 'rb') as f:
+        data = f.read()
+    kind = kind_of(data)
+    if kind is None:
+        sys.exit('error: --file must be a .pgm, .png or .jpg (not the .yaml)')
+    meta = read_sidecar(path) if kind == 'pgm' else {}
+    log(f'sending {path} ({len(data) // 1024} KB, {kind})')
+
+    last = None
+    for attempt in range(1, args.retries + 1):
+        rid = None
+        try:                                    # a failed lookup must not stop the upload
+            pend = get_pending(args)
+            rid = next((r['id'] for r in pend if r['format'] in ('any', kind)), None)
+            if rid:
+                log('answering a pending request')
+            elif pend:
+                log(f"WARNING: judges asked for {pend[0]['format']}, but this file is a {kind}; "
+                    f"sending it as unrequested - the request stays open")
+        except ServerError as e:
+            log(f'could not check pending requests ({e}) - sending anyway')
+        try:
+            send(args, data, os.path.basename(path), rid, meta)
+            return
+        except ServerError as e:
+            last = e
+            if e.code == 409 and rid:           # request expired/answered meanwhile: send unrequested
+                try:
+                    send(args, data, os.path.basename(path), None, meta)
+                    return
+                except ServerError as e2:
+                    last = e2
+            if e.code in (401, 403, 413, 422):  # retrying will not help
+                sys.exit(f'error: {e}')
+            log(f'attempt {attempt}/{args.retries} failed: {last}')
+            time.sleep(min(2 * attempt, 8))
+    sys.exit(f'error: could not deliver after {args.retries} attempts: {last}\n'
+             f'check: same network/VPN as the judges? try: curl -m 5 {args.server}/api/maps/status')
+
+
 def main():
     ap = argparse.ArgumentParser(description='Send your map to the Robotics Dojo judges.')
     ap.add_argument('--server', default=os.environ.get('DOJO_SERVER'), help='e.g. http://192.168.1.10:8000')
@@ -522,6 +600,7 @@ def main():
     ap.add_argument('--file', help='send this .pgm/.png/.jpg instead of capturing')
     ap.add_argument('--topic', default='/map', help='OccupancyGrid topic (default /map)')
     ap.add_argument('--timeout', type=float, default=10.0, help='seconds to wait for the map topic')
+    ap.add_argument('--retries', type=int, default=6, help='upload attempts for --file (default 6)')
     ap.add_argument('--interval', type=float, default=2.0, help='poll period in --watch mode')
     det = ap.add_argument_group('detection')
     det.add_argument('--label', default='', help='detected class: organic, plastic or metal')
@@ -553,21 +632,7 @@ def main():
 
     try:
         if args.file:
-            with open(args.file, 'rb') as f:
-                data = f.read()
-            kind = kind_of(data)
-            if kind is None:
-                sys.exit('error: --file must be a .pgm, .png or .jpg')
-            pend = get_pending(args)
-            rid = next((r['id'] for r in pend if r['format'] in ('any', kind)), None)
-            if rid:
-                log('answering a pending request')
-            elif pend:
-                log(f"WARNING: judges asked for {pend[0]['format']}, but this file is a {kind}; "
-                    f"sending it as unrequested - the request stays open")
-            else:
-                log('no pending request: sending unrequested')
-            send(args, data, os.path.basename(args.file), rid)
+            send_file(args)
             return
         if args.push:
             data, filename, meta = produce(args, args.push)

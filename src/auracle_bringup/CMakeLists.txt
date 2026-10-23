@@ -15,6 +15,7 @@ install(PROGRAMS
   scripts/key_drive.py
   scripts/joy_udp_node.py
   scripts/dojo_map.py
+  scripts/dojo_rviz_stream.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

@@ -7,6 +7,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from launch.conditions import IfCondition
 from launch_ros.actions import Node
 
 
@@ -58,7 +59,8 @@ def generate_launch_description():
             'use_sim_time': use_sim_time,
             'namespace': namespace,
             'params_file': params_file,
-        }.items())
+        }.items(),
+        condition=IfCondition(LaunchConfiguration('use_slam')))
 
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false',
@@ -67,6 +69,8 @@ def generate_launch_description():
                               description='auracle on the real robot, empty in sim'),
         DeclareLaunchArgument('use_rviz', default_value='true',
                               description='false on a headless Pi; run RViz on the laptop'),
+        DeclareLaunchArgument('use_slam', default_value='true',
+                              description='false = RViz only (laptop), with SLAM itself running on the Pi'),
         DeclareLaunchArgument(
             'params_file',
             default_value=os.path.join(bringup_pkg, 'config', 'mapper_params_online_async.yaml'),

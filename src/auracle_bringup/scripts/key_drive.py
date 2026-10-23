@@ -16,11 +16,16 @@ HOW THIS ONE WORKS
   low-pass filters and slew limits as joy_drive.py, and is published at a fixed rate, so
   starts, stops and turns are ramps. Hold one key at a time.
 
-KEYS
-  w / i        forward             u / o   forward arc left / right
-  s / ,        backward            m / .   backward arc left / right
-  a / j        spin left           d / l   spin right
-  space / k    stop (smoothly)     q / z   speed level +10 % / -10 %
+EVERY KEY IS HOLD-TO-MOVE
+  The robot moves only while a key is held, and eases to a stop when you let go.
+  A terminal only repeats the LAST key held, so holding w and tapping d can't come back to
+  straight when d is released (no more w's arrive). Use u / o to drive and turn together.
+
+KEYS (hold)
+  w / i        forward                      s / ,   backward
+  a / j        spin left                    d / l   spin right
+  u / o        forward arc left / right     m / .   backward arc left / right
+  space / k    stop now (smoothly)          q / z   speed level +10 % / -10 %
   Ctrl+C       quit (sends zero)
 """
 import math
@@ -35,20 +40,19 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
 # (linear, angular) direction for each key.
+# (drive, turn) while the key is held.
 BINDINGS = {
-    'w': (1, 0), 'i': (1, 0),
-    's': (-1, 0), ',': (-1, 0),
-    'a': (0, 1), 'j': (0, 1),
-    'd': (0, -1), 'l': (0, -1),
-    'u': (1, 1), 'o': (1, -1),
-    'm': (-1, -1), '.': (-1, 1),
+    'w': (1, 0), 'i': (1, 0), 's': (-1, 0), ',': (-1, 0),
+    'a': (0, 1), 'j': (0, 1), 'd': (0, -1), 'l': (0, -1),
+    'u': (1, 1), 'o': (1, -1), 'm': (-1, -1), '.': (-1, 1),
 }
 STOP_KEYS = (' ', 'k')
 
 DEFAULTS = {
-    'max_linear': 0.14,          # m/s   (real robot clamps at 0.14 in my_controllers_real.yaml)
-    'max_angular': 1.0,          # rad/s for spins
-    'arc_turn_scale': 0.14,      # arc turn rate = this * max_angular. Arcs top out at ~0.16 rad/s
+    'max_linear': 0.16,          # m/s forward (my_controllers_real.yaml clamps at 0.16: weak right rear)
+    'max_linear_reverse': 0.25,  # m/s backward (right rear is healthy backward)
+    'max_angular': 1.3,          # rad/s for spins
+    'arc_turn_scale': 0.11,      # arc turn rate = this * max_angular (~0.14 rad/s). Arcs top out at ~0.16 rad/s
                                  # (weak right rear); more than that becomes a spin.
     'initial_speed': 1.0,        # 100 % = 0.14 m/s; below ~70 % the Nano rounds up to its 0.10 m/s minimum
     'speed_min': 0.7,
@@ -56,7 +60,8 @@ DEFAULTS = {
     'speed_step': 0.1,
     'publish_rate': 20.0,        # Hz, matches controller_manager on the robot
     'first_hold': 0.6,           # s a single press counts as held (covers the key-repeat delay)
-    'repeat_hold': 0.15,         # s after each repeat
+    'repeat_hold': 0.35,         # s after each repeat. Was 0.15: key repeats over SSH arrive in
+                                 # bunches with gaps, which read as release/press = bursts.
     'smoothing_linear': 0.07,    # s, time constant of EACH of the two filters (as joy_drive)
     'smoothing_angular': 0.09,
     'decel_ratio': 0.7,
@@ -82,8 +87,8 @@ class KeyMixer:
     def __init__(self, cfg):
         self.c = dict(cfg)
         self.speed = clamp(cfg['initial_speed'], cfg['speed_min'], cfg['speed_max'])
-        self.key = None
-        self.key_until = 0.0
+        self.key = None         # key currently held
+        self.key_until = 0.0    # held until this time unless another repeat arrives
         self.l1 = self.l2 = self.lin = 0.0
         self.a1 = self.a2 = self.ang = 0.0
         self.sent_zero = True
@@ -109,9 +114,10 @@ class KeyMixer:
         if self.key is None or now >= self.key_until:
             self.key = None
             return 0.0, 0.0
-        lin, ang = BINDINGS[self.key]
-        turn = c['max_angular'] * (c['arc_turn_scale'] if lin != 0 else 1.0)
-        return lin * c['max_linear'] * self.speed, ang * turn * self.speed
+        drive, turn = BINDINGS[self.key]
+        rate = c['max_angular'] * (c['arc_turn_scale'] if drive != 0 else 1.0)
+        lin_max = c['max_linear'] if drive >= 0 else c['max_linear_reverse']
+        return drive * lin_max * self.speed, turn * rate * self.speed
 
     def step(self, now, dt):
         """Returns (linear, angular, publish?)."""

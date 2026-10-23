@@ -19,9 +19,10 @@
     enabled_modes: ['stick', 'triggers', 'buttons']
 
     # --- Speed at 100 % speed level. D-pad up/down moves the level in 10 % steps. ---
-    max_linear: 0.14          # m/s. my_controllers_real.yaml clamps to 0.14 (weak right rear), so 100 % = max.
-    max_angular: 1.0          # rad/s
-    wheel_separation: 0.2755  # m. Used for trigger banking; keep equal to diff_cont's value.
+    max_linear: 0.16          # m/s forward. my_controllers_real.yaml clamps to 0.16 (weak right rear).
+    max_linear_reverse: 0.25  # m/s backward (right rear healthy backward).
+    max_angular: 1.3          # rad/s
+    wheel_separation: 0.369   # m. Used for trigger banking; keep equal to diff_cont's value (real robot).
     initial_speed: 0.5        # start at 50 %
     speed_min: 0.1
     speed_max: 1.0

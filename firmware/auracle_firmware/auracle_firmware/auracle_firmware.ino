@@ -27,8 +27,8 @@ const WheelParams LB_PARAMS = {LB_KICK_FWD, LB_KICK_REV, LB_FLOOR_FWD, LB_FLOOR_
 const WheelParams RB_PARAMS = {RB_KICK_FWD, RB_KICK_REV, RB_FLOOR_FWD, RB_FLOOR_REV, RB_KP, RB_KI,
                                RB_FF_FWD_BASE, RB_FF_FWD_K, RB_FF_REV_BASE, RB_FF_REV_K};
 
-MotorDriver leftSide(PIN_L_FWD, PIN_L_REV, PIN_LB_EN, PIN_LF_EN, LF_TRIM, LF_MIN_PWM);
-MotorDriver rightSide(PIN_R_FWD, PIN_R_REV, PIN_RB_EN, PIN_RF_EN, RF_TRIM, RF_MIN_PWM);
+MotorDriver leftSide(PIN_L_FWD, PIN_L_REV, PIN_LB_EN, PIN_LF_EN, LF_TRIM_FWD, LF_TRIM_REV, LF_MIN_PWM);
+MotorDriver rightSide(PIN_R_FWD, PIN_R_REV, PIN_RB_EN, PIN_RF_EN, RF_TRIM_FWD, RF_TRIM_REV, RF_MIN_PWM);
 EncoderDriver leftEnc(PIN_LB_ENC_INT, PIN_LB_ENC_DIR, LB_ENC_SIGN);
 EncoderDriver rightEnc(PIN_RB_ENC_INT, PIN_RB_ENC_DIR, RB_ENC_SIGN);
 PIDController leftPid(LB_PARAMS), rightPid(RB_PARAMS);
@@ -124,6 +124,11 @@ void apply(MotorDriver& side, const DriveCmd& c) {
 // A latched fault stops everything until the Pi sends 's' or a zero velocity command.
 float faultTargetL = 0, faultTargetR = 0;   // targets at the moment of the fault (for the report)
 void checkFaults() {
+    if (REPORT_FAULTS) {   // stalls that were only reported, not stopped (FAULT_STOP_ON_STALL false)
+        Fault rl = leftPid.takeReport(), rr = rightPid.takeReport();
+        if (rl != FAULT_NONE) link.sendFault('L', rl, (int)leftPid.speed(), (int)targetL);
+        if (rr != FAULT_NONE) link.sendFault('R', rr, (int)rightPid.speed(), (int)targetR);
+    }
     Fault fl = leftPid.fault(), fr = rightPid.fault();
     if (fl == FAULT_NONE && fr == FAULT_NONE) return;
     faultTargetL = targetL;
@@ -244,6 +249,8 @@ void loop() {
         uint8_t boost = (uint8_t)(FRONT_TURN_BOOST_PWM * turn + 0.5f);
         leftSide.setFrontBoost(boost);
         rightSide.setFrontBoost(boost);
+        leftPid.setBoost(REAR_TURN_BOOST_PWM * turn);
+        rightPid.setBoost(REAR_TURN_BOOST_PWM * turn);
         apply(leftSide, leftPid.update(targetL, rawL, dt, now));
         if (RB_ENCODER_OK) apply(rightSide, rightPid.update(targetR, rawR, dt, now));
         else               apply(rightSide, rightOpen.update(faultLatched ? 0.0f : targetR, dt, now));

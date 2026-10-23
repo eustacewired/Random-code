@@ -81,7 +81,7 @@ public:
         float spd      = dir_ * speed_;      // positive = moving as commanded
         float floorPwm = (dir_ > 0) ? p_.floorF : p_.floorR;
         float kickPwm  = (dir_ > 0) ? p_.kickF : p_.kickR;
-        float ffPwm    = feedforward(rampedAbs_);
+        float ffPwm    = min(feedforward(rampedAbs_) + boost_, 255.0f);
 
         // From rest: hold at least the kick PWM until the wheel is turning (control paused), then
         // hand over at no less than the feedforward, so the output never drops back to the floor.
@@ -115,13 +115,21 @@ public:
             } else wrongSign_ = 0;
 
             if (out_ >= 254.5f && spd < 0.8f * absT) {
-                if (++satCount_ >= FAULT_SATURATED_COUNT) { fault_ = FAULT_SATURATED; return coast(); }
+                if (++satCount_ >= FAULT_SATURATED_COUNT) {
+                    satCount_ = 0;
+                    if (!FAULT_STOP_ON_STALL) report_ = FAULT_SATURATED;   // log it, keep driving
+                    else { fault_ = FAULT_SATURATED; return coast(); }
+                }
             } else satCount_ = 0;
 
             // Dead encoder or blocked wheel: PWM is applied but the wheel barely moves. The integral
             // clamp keeps the PWM below 255 here, so the saturation check above never sees it.
             if (rampedAbs_ > 0.0f && spd < FAULT_NO_MOTION_FRAC * rampedAbs_) {
-                if (++noMotion_ >= FAULT_NO_MOTION_COUNT) { fault_ = FAULT_NO_MOTION; return coast(); }
+                if (++noMotion_ >= FAULT_NO_MOTION_COUNT) {
+                    noMotion_ = 0;
+                    if (!FAULT_STOP_ON_STALL) report_ = FAULT_NO_MOTION;   // log it, keep driving
+                    else { fault_ = FAULT_NO_MOTION; return coast(); }
+                }
             } else noMotion_ = 0;
         }
 
@@ -138,9 +146,14 @@ public:
         wrongSign_ = satCount_ = noMotion_ = 0;
     }
 
+    // Extra feedforward PWM (turn boost), set every control period. 0 = none.
+    void setBoost(float b) { boost_ = b; }
+
     float speed() const { return speed_; }
     Fault fault() const { return fault_; }
     void clearFault() { fault_ = FAULT_NONE; }
+    // A stall seen while FAULT_STOP_ON_STALL is false: reported once, nothing is stopped.
+    Fault takeReport() { Fault r = report_; report_ = FAULT_NONE; return r; }
 
 private:
     enum State : uint8_t { ST_IDLE, ST_RUN, ST_BRAKE, ST_WAIT };
@@ -177,6 +190,7 @@ private:
     }
 
     WheelParams p_;
+    float boost_ = 0.0f;
     State state_ = ST_IDLE;
     int8_t dir_ = 0;                 // direction of the last / current run
     float speed_ = 0.0f;             // filtered, signed ticks/s
@@ -185,6 +199,7 @@ private:
     unsigned long kickEnd_ = 0, phaseEnd_ = 0, graceEnd_ = 0;
     uint8_t wrongSign_ = 0, satCount_ = 0, noMotion_ = 0;
     Fault fault_ = FAULT_NONE;
+    Fault report_ = FAULT_NONE;
 };
 // Drives a wheel with no usable encoder: feedforward PWM on a ramped setpoint, the same kick
 // from rest as the PI, and no fault checks (they all need a speed reading). It also keeps an

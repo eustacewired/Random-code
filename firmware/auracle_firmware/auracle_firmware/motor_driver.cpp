@@ -2,9 +2,9 @@
 #include "config.h"
 
 MotorDriver::MotorDriver(uint8_t pinFwd, uint8_t pinRev, uint8_t pinRearEn, uint8_t pinFrontEn,
-                         float frontTrim, uint8_t frontMinPwm)
+                         float frontTrimFwd, float frontTrimRev, uint8_t frontMinPwm)
     : pinFwd_(pinFwd), pinRev_(pinRev), pinRearEn_(pinRearEn), pinFrontEn_(pinFrontEn),
-      frontTrim_(frontTrim), frontMinPwm_(frontMinPwm) {}
+      frontTrimFwd_(frontTrimFwd), frontTrimRev_(frontTrimRev), frontMinPwm_(frontMinPwm) {}
 
 void MotorDriver::configurePwmTimers() {
     // Timer1: phase-correct 8-bit (490 Hz) -> fast PWM 8-bit, /64 prescaler = ~976 Hz.
@@ -46,7 +46,8 @@ void MotorDriver::drive(int effort) {
     }
     bool forward = effort > 0;
     int rear = constrain(abs(effort), 0, MAX_PWM);
-    int front = constrain((int)(rear * frontTrim_ + 0.5f) + frontBoost_, (int)frontMinPwm_, MAX_PWM);
+    float trim = forward ? frontTrimFwd_ : frontTrimRev_;
+    int front = constrain((int)(rear * trim + 0.5f) + frontBoost_, (int)frontMinPwm_, MAX_PWM);
 
     // Soft start: every motor jumping straight to its kick PWM at once pulls a current spike
     // big enough to sag the LiPo and brown out the Pi's buck converter. Rise in steps instead.

@@ -46,6 +46,7 @@ DEFAULTS = {
 
     # --- speed at 100 % speed level ---
     'max_linear': 0.25,          # m/s   (real robot clamps at 0.25 in my_controllers_real.yaml)
+    'max_linear_reverse': 0.25,  # m/s backward (can differ from forward)
     'max_angular': 1.5,          # rad/s
     'wheel_separation': 0.2755,  # m     used for trigger banking; match diff_cont
 
@@ -228,7 +229,10 @@ class DriveMixer:
             angs.append((self._btn(c['button_left']) - self._btn(c['button_right']))
                         * c['max_angular'] * s * c['button_turn_scale'])
 
-        return pick(lins), pick(angs)
+        lin = pick(lins)
+        if lin < 0.0:   # every scheme above scales by max_linear; backward may be faster
+            lin *= c['max_linear_reverse'] / c['max_linear']
+        return lin, pick(angs)
 
     # ----- one control tick -----
     def step(self, now, dt):

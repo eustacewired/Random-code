@@ -93,8 +93,12 @@ constexpr float RB_FF_REV_BASE = 9.7f,  RB_FF_REV_K = 0.1384f;
 // equal PWM (trim 1.0) is the best guess for same-model motors. The old 1.15 / 1.5 offsets were measured
 // at mismatched PWM frequencies (and while RB was failing); re-run the front-offset test and set
 //   new_trim = old_trim * (rear_speed / front_speed)
-constexpr float LF_TRIM = 1.3f;
-constexpr float RF_TRIM = 1.0f;
+// Teleop 2026-10-23: fronts visibly faster than rears, robot drifted left holding 'w'. RB is weak
+// FORWARD, so its PI asks for ~2x the PWM a healthy motor needs, and RF copied that and out-ran it.
+// RF forward is halved to match; reverse (RB healthy) stays 1.0. LF was 1.3 (unvalidated) -> 1.0.
+// Straight-line test: drifts LEFT going forward -> lower RF_TRIM_FWD; drifts RIGHT -> raise it.
+constexpr float LF_TRIM_FWD = 1.0f, LF_TRIM_REV = 1.0f;
+constexpr float RF_TRIM_FWD = 0.5f, RF_TRIM_REV = 1.0f;
 constexpr uint8_t LF_MIN_PWM = 70;   // stall by eye at the old 490 Hz
 constexpr uint8_t RF_MIN_PWM = 51;   // stall by eye
 
@@ -106,7 +110,7 @@ constexpr float MIN_TARGET_TICKS_S = 450.0f;   // was 600; lowered so arcs fit u
 constexpr float MAX_TICKS_S        = 1200.0f;
 // RB reaches only ~735 ticks/s forward at PWM 255 (see RB_FF_FWD). Keep ~10% headroom for the PI.
 // conditionTargets() caps the right wheel's forward speed at this. Raise it once RB is repaired.
-constexpr float RB_FWD_MAX_TICKS_S = 650.0f;
+constexpr float RB_FWD_MAX_TICKS_S = 740.0f;   // was 650; raised for speed (~0.16 m/s). Lower again if it curves right
 
 // Same-sign wheel pairs can differ by at most MAX - MIN. Beyond that, counter-rotate.
 constexpr float CMD_DEADBAND_TICKS_S = 150.0f;   // faster wheel below this = stop
@@ -119,7 +123,7 @@ constexpr float RB_KI = 0.20f;
 constexpr unsigned long CONTROL_PERIOD_MS = 50;
 constexpr float SPEED_FILTER_ALPHA    = 0.4f;     // speed += alpha * (raw - speed)
 constexpr float ERR_CLAMP_TICKS_S     = 300.0f;   // limits the push during spin-up
-constexpr float INTEG_MAX_PWM         = 60.0f;    // integral clamp (anti-windup, +/-)
+constexpr float INTEG_MAX_PWM         = 100.0f;   // integral clamp (anti-windup, +/-). Was 60: too little to un-stall a spin on the floor
 constexpr float MAX_PWM_STEP          = 12.0f;    // max PWM change per control period
 // Soft start in MotorDriver::drive(): max PWM rise per control period, for every motor (rear and
 // front). 0 -> 135 kick in 4 periods (200 ms) instead of one step. Limits the start-up current
@@ -140,7 +144,11 @@ constexpr unsigned long REVERSE_WAIT_MS  = 800;   // max wait for standstill bef
 constexpr float         STILL_TICKS_S    = 30.0f;
 
 // Extra front-wheel PWM while turning (fronts have no encoder, so they can't sense the scrub load).
-constexpr uint8_t FRONT_TURN_BOOST_PWM      = 40;      // tune: raise until the stutter stops
+constexpr uint8_t FRONT_TURN_BOOST_PWM      = 80;      // was 40; spins still stalled the right side
+// Same idea for the closed-loop REAR wheels: extra feedforward PWM while turning. A skid-steer
+// spin on the floor needed more than the PI could add in its 1 s before NO_MOTION fired: all 54
+// faults in the first teleop run were the right side stalling (speed 0) during a spin.
+constexpr uint8_t REAR_TURN_BOOST_PWM       = 60;
 constexpr float   BOOST_FULL_DIFF_TICKS_S   = 600.0f;  // |right - left| target where the full boost applies
 // --- Safety ---
 constexpr unsigned long COMMS_TIMEOUT_MS = 500;   // stop if the Pi goes quiet
@@ -158,6 +166,10 @@ constexpr uint8_t FAULT_NO_MOTION_COUNT  = 20;     // ... for 1 s = dead encoder
 // between it stays latched, so a really dead encoder can't keep driving a wheel forever.
 constexpr unsigned long FAULT_RETRY_MS  = 300; 
 constexpr uint8_t       FAULT_MAX_RETRIES = 3;
+// What a stall (NO_MOTION / SATURATED) does. true = stop every motor and retry, as before.
+// false = report it to the Pi and keep driving: stopping can't free a wheel that is stalling in a
+// skid-steer spin, it only turned every stall into the stop-start "burst". WRONG_SIGN always stops.
+constexpr bool FAULT_STOP_ON_STALL = false;
 // Send "F <L|R> <code> <speed> <target>" lines on a fault (1 = wrong sign, 2 = saturated, 3 = no motion). Make sure the Pi-side
 // parser ignores lines that are not 'e ...' / 'READY', or set this to false.
 constexpr bool REPORT_FAULTS = true;

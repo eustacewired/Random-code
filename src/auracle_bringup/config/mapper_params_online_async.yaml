@@ -70,8 +70,8 @@ slam_toolbox:
     loop_search_space_smear_deviation: 0.03
 
     # Scan Matcher Parameters
-    distance_variance_penalty: 0.3   # trust scans more than wheel odometry
-    angle_variance_penalty: 0.3      # wheel yaw over-reports turns x1.1-1.5 and there's no IMU
+    distance_variance_penalty: 0.15   # was 0.3: trust scans much more than wheel odometry
+    angle_variance_penalty: 0.15      # was 0.3: wheel yaw over-reports turns and there is no IMU
 
     fine_search_angle_offset: 0.00349     
     coarse_search_angle_offset: 0.349   

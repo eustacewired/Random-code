@@ -73,7 +73,8 @@ def generate_launch_description():
             'namespace': namespace,
             'map': map_yaml_file,
             'params_file': localization_params,
-        }.items()
+        }.items(),
+        condition=IfCondition(LaunchConfiguration('use_nav'))
     )
 
     nav_params = os.path.join(bringup_pkg, 'config', 'nav2_params.yaml')
@@ -84,7 +85,8 @@ def generate_launch_description():
             'use_sim_time': use_sim_time,
             'namespace': namespace,
             'params_file': nav_params,
-        }.items()
+        }.items(),
+        condition=IfCondition(LaunchConfiguration('use_nav'))
     )
 
     return LaunchDescription([
@@ -92,6 +94,8 @@ def generate_launch_description():
         declare_namespace,
         declare_use_rviz,
         declare_map,
+        DeclareLaunchArgument('use_nav', default_value='true',
+                              description='false = RViz only (laptop), with AMCL + Nav2 running on the Pi'),
         localization,
         navigation,
         OpaqueFunction(function=_rviz),

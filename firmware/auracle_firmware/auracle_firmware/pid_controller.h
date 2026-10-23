@@ -186,3 +186,50 @@ private:
     uint8_t wrongSign_ = 0, satCount_ = 0, noMotion_ = 0;
     Fault fault_ = FAULT_NONE;
 };
+// Drives a wheel with no usable encoder: feedforward PWM on a ramped setpoint, the same kick
+// from rest as the PI, and no fault checks (they all need a speed reading). It also keeps an
+// estimate of the wheel's position from the ramped setpoint, sent in place of encoder counts
+// so the Pi's odometry still has something sensible for that side.
+class OpenLoopWheel {
+public:
+    OpenLoopWheel(const WheelParams& p, float gainF, float gainR) : p_(p), gainF_(gainF), gainR_(gainR) {}
+
+    // target: signed 1x ticks/s. Passing through zero ramps down, coasts briefly, ramps up.
+    DriveCmd update(float target, float dt, unsigned long ms) {
+        float step = TARGET_RAMP_TICKS_S2 * dt;
+        if (ramped_ < target) { ramped_ += step; if (ramped_ > target) ramped_ = target; }
+        else                  { ramped_ -= step; if (ramped_ < target) ramped_ = target; }
+
+        frac_ += ramped_ * dt;               // estimated 1x ticks travelled
+        long whole = (long)frac_;
+        whole_ += whole;
+        frac_ -= whole;
+
+        if (fabs(ramped_) < OPEN_STOP_TICKS_S) { dir_ = 0; return DriveCmd{DRIVE_COAST, 0}; }
+        int8_t dir = (ramped_ > 0) ? 1 : -1;
+        if (dir != dir_) { dir_ = dir; kickEnd_ = ms + KICK_MS; }
+
+        float a = fabs(ramped_);
+        float pwm = (dir > 0) ? (p_.ffBaseF + p_.ffKF * a) * gainF_ : (p_.ffBaseR + p_.ffKR * a) * gainR_;
+        float flr = (dir > 0) ? p_.floorF : p_.floorR;
+        float kick = (dir > 0) ? p_.kickF : p_.kickR;
+        if (pwm < flr) pwm = flr;
+        if ((long)(ms - kickEnd_) < 0 && pwm < kick) pwm = kick;
+        if (pwm > 255.0f) pwm = 255.0f;
+        return DriveCmd{DRIVE_RUN, dir * (int)(pwm + 0.5f)};
+    }
+
+    // Stop now (watchdog, fault, 's'). The estimate is kept.
+    void reset() { ramped_ = 0.0f; dir_ = 0; }
+
+    // Estimated position in 2x counts, the unit EncoderDriver::count() uses.
+    long counts2x() const { return whole_ * 2; }
+
+private:
+    WheelParams p_;
+    float gainF_, gainR_;
+    float ramped_ = 0.0f, frac_ = 0.0f;
+    long whole_ = 0;
+    int8_t dir_ = 0;
+    unsigned long kickEnd_ = 0;
+};

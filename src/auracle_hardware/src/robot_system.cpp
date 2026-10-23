@@ -53,8 +53,8 @@ hardware_interface::CallbackReturn AuracleHardwareInterface::on_init(
 
   device_ = param(info_, "device", device_);
   imu_name_ = param(info_, "imu_sensor_name", imu_name_);
-  double left_cpr = std::stod(param(info_, "left_enc_counts_per_rev", "730.0"));
-  double right_cpr = std::stod(param(info_, "right_enc_counts_per_rev", "655.0"));
+  double left_cpr = std::stod(param(info_, "left_enc_counts_per_rev", "985.0"));
+  double right_cpr = std::stod(param(info_, "right_enc_counts_per_rev", "942.0"));
   double left_sign = std::stod(param(info_, "left_direction_sign", "1.0"));
   double right_sign = std::stod(param(info_, "right_direction_sign", "1.0"));
 

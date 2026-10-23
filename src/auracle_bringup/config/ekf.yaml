@@ -17,22 +17,24 @@
         #               roll_vel, pitch_vel, yaw_vel,
         #               x_accel , y_accel  , z_accel]
         odom0: diff_cont/odom
+        # vyaw from the wheels is ON while the IMU is dead (Nano telemetry shows all-zero IMU,
+        # 2026-10-23). Turn it back off and re-enable imu0 below once the MPU6050 answers again.
         odom0_config: [false, false, false,
                        false, false, false,
                        true,  false, false,
-                       false, false, false,
+                       false, false, true,
                        false, false, false]
         odom0_differential: false
         odom0_relative: false
-        imu0: imu_broadcaster/imu
-        imu0_config: [false, false, false,
-                      false, false, false,
-                      false, false, false,
-                      false, false, true,
-                      false, false, false]
-        imu0_differential: false
-        imu0_relative: true
-        imu0_remove_gravitational_acceleration: true
+        # imu0: imu_broadcaster/imu
+        # imu0_config: [false, false, false,
+        # false, false, false,
+        # false, false, false,
+        # false, false, true,
+        # false, false, false]
+        # imu0_differential: false
+        # imu0_relative: true
+        # imu0_remove_gravitational_acceleration: true
 
         use_control: false
 

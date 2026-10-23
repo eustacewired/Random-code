@@ -19,8 +19,8 @@
     enabled_modes: ['stick', 'triggers', 'buttons']
 
     # --- Speed at 100 % speed level. D-pad up/down moves the level in 10 % steps. ---
-    max_linear: 0.25          # m/s. my_controllers_real.yaml clamps to 0.25, so 100 % = max.
-    max_angular: 1.5          # rad/s
+    max_linear: 0.14          # m/s. my_controllers_real.yaml clamps to 0.14 (weak right rear), so 100 % = max.
+    max_angular: 1.0          # rad/s
     wheel_separation: 0.2755  # m. Used for trigger banking; keep equal to diff_cont's value.
     initial_speed: 0.5        # start at 50 %
     speed_min: 0.1

@@ -14,17 +14,23 @@ public:
     static void configurePwmTimers();
 
     void begin();
-    // Signed REAR PWM -255..255, used as given (no floor). 0 = coast.
+    // Signed REAR PWM -255..255 (no floor). 0 = coast. Increases are limited to
+    // PWM_RISE_PER_CALL per call (soft start); decreases are immediate.
     void drive(int effort);
     // Short brake: both direction inputs HIGH with the enables HIGH.
     void brake();
     // Everything off.
     void coast();
-        void setFrontBoost(uint8_t b) { frontBoost_ = b; }
+    void setFrontBoost(uint8_t b) { frontBoost_ = b; }
+    // +1 / -1 while driving, 0 while coasting or braking.
+    int8_t direction() const { return outDir_; }
 
 private:
     uint8_t pinFwd_, pinRev_, pinRearEn_, pinFrontEn_;
     float frontTrim_;
     uint8_t frontMinPwm_;
-        uint8_t frontBoost_ = 0;   
+    uint8_t frontBoost_ = 0;
+    // Last PWM actually written, for the soft-start limit in drive(). 0 after coast/brake.
+    int8_t outDir_ = 0;
+    int rearOut_ = 0, frontOut_ = 0;
 };

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4"
+      main_tree_to_execute="SortingTree">
+  <BehaviorTree ID="SortingTree">
+    <Sequence>
+      <GetDetectedClass detected_class="{detected_class}"/>
+      <Fallback>
+        <Sequence name="PlasticBranch">
+          <ScriptCondition code="detected_class == &apos;PLASTIC&apos;"/>
+          <LoadWaypoints goals="{goals}"
+                         path_name="plastic_path"/>
+          <FollowWaypoints goals="{goals}"/>
+        </Sequence>
+        <Sequence name="MetallicBranch">
+          <ScriptCondition code="detected_class == &apos;METALLIC&apos;"/>
+          <LoadWaypoints goals="{goals}"
+                         path_name="metallic_path"/>
+          <FollowWaypoints goals="{goals}"/>
+        </Sequence>
+        <Sequence name="FabricBranch">
+          <ScriptCondition code="detected_class == &apos;FABRIC&apos;"/>
+          <LoadWaypoints goals="{goals}"
+                         path_name="fabric_path"/>
+          <FollowWaypoints goals="{goals}"/>
+        </Sequence>
+        <Sequence name="OtherBranch">
+          <LoadWaypoints goals="{goals}"
+                         path_name="other_path"/>
+          <FollowWaypoints goals="{goals}"/>
+        </Sequence>
+      </Fallback>
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- Description of Node Models (used by Groot) -->
+  <TreeNodesModel>
+    <Action ID="FollowWaypoints">
+      <input_port name="goals"
+                  type="std::vector&lt;geometry_msgs::msg::PoseStamped_&lt;std::allocator&lt;void&gt; &gt;, std::allocator&lt;geometry_msgs::msg::PoseStamped_&lt;std::allocator&lt;void&gt; &gt; &gt; &gt;"/>
+    </Action>
+    <Action ID="GetDetectedClass">
+      <output_port name="detected_class"
+                   type="std::string"/>
+    </Action>
+    <Action ID="LoadWaypoints">
+      <output_port name="goals"
+                   type="std::vector&lt;geometry_msgs::msg::PoseStamped_&lt;std::allocator&lt;void&gt; &gt;, std::allocator&lt;geometry_msgs::msg::PoseStamped_&lt;std::allocator&lt;void&gt; &gt; &gt; &gt;"/>
+      <input_port name="path_name"
+                  type="std::string"/>
+    </Action>
+  </TreeNodesModel>
+
+</root>

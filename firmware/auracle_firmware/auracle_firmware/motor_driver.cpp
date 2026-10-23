@@ -22,6 +22,8 @@ void MotorDriver::begin() {
 }
 
 void MotorDriver::coast() {
+    outDir_ = 0;
+    rearOut_ = frontOut_ = 0;
     analogWrite(pinRearEn_, 0);
     analogWrite(pinFrontEn_, 0);
     digitalWrite(pinFwd_, LOW);
@@ -29,6 +31,8 @@ void MotorDriver::coast() {
 }
 
 void MotorDriver::brake() {
+    outDir_ = 0;
+    rearOut_ = frontOut_ = 0;
     digitalWrite(pinFwd_, HIGH);
     digitalWrite(pinRev_, HIGH);
     analogWrite(pinRearEn_, 255);
@@ -43,6 +47,16 @@ void MotorDriver::drive(int effort) {
     bool forward = effort > 0;
     int rear = constrain(abs(effort), 0, MAX_PWM);
     int front = constrain((int)(rear * frontTrim_ + 0.5f) + frontBoost_, (int)frontMinPwm_, MAX_PWM);
+
+    // Soft start: every motor jumping straight to its kick PWM at once pulls a current spike
+    // big enough to sag the LiPo and brown out the Pi's buck converter. Rise in steps instead.
+    int8_t dir = forward ? 1 : -1;
+    if (dir != outDir_) rearOut_ = frontOut_ = 0;   // new direction starts from rest
+    outDir_ = dir;
+    rear  = min(rear,  rearOut_  + (int)PWM_RISE_PER_CALL);
+    front = min(front, frontOut_ + (int)PWM_RISE_PER_CALL);
+    rearOut_ = rear;
+    frontOut_ = front;
 
     digitalWrite(pinFwd_, forward ? HIGH : LOW);
     digitalWrite(pinRev_, forward ? LOW : HIGH);

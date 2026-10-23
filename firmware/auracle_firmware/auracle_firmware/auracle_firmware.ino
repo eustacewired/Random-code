@@ -32,6 +32,7 @@ MotorDriver rightSide(PIN_R_FWD, PIN_R_REV, PIN_RB_EN, PIN_RF_EN, RF_TRIM, RF_MI
 EncoderDriver leftEnc(PIN_LB_ENC_INT, PIN_LB_ENC_DIR, LB_ENC_SIGN);
 EncoderDriver rightEnc(PIN_RB_ENC_INT, PIN_RB_ENC_DIR, RB_ENC_SIGN);
 PIDController leftPid(LB_PARAMS), rightPid(RB_PARAMS);
+OpenLoopWheel rightOpen(RB_PARAMS, RB_OPEN_GAIN_FWD, RB_OPEN_GAIN_REV);   // used when !RB_ENCODER_OK
 IMUDriver imu;
 SerialProtocol link;
 
@@ -47,6 +48,7 @@ int16_t imuRaw[6] = {0, 0, 0, 0, 0, 0};
 
 void isrLeft() { leftEnc.tick(); }
 void isrRight() { rightEnc.tick(); }
+ISR(PCINT2_vect) { rightEnc.tickB(); }   // D4 = PD4 = PCINT20, only enabled when RB_COUNT_ON_B
 
 // Conditions the left/right pair TOGETHER so a moving robot never has a stationary side
 // (a stopped wheel means brake -> coast -> kick restart, which is the vibration and jumping).
@@ -55,30 +57,49 @@ void isrRight() { rightEnc.tick(); }
 //   - pure spin request (l ~= -r)      -> stays a spin in place, each wheel clamped to MIN..MAX
 //   - difference > MAX - MIN           -> counter-rotate (pivot), no wheel can run slower than MIN
 //   - otherwise (arc)                  -> shift both wheels together until the slower is at MIN
+// Works in wheel rev/s, not ticks: the two sides have different ticks/rev, so shifting both by
+// the same number of ticks would add a yaw the Pi never asked for (the robot drifts in an arc).
+// The arc/spin switch has hysteresis so a turn held near the boundary doesn't keep reversing
+// the inner side (each reversal = brake, wait for standstill, kick: the stop-start shudder).
 void conditionTargets(float& l, float& r) {
-    if (max(fabs(l), fabs(r)) < CMD_DEADBAND_TICKS_S) { l = r = 0; return; }
+    static bool spinning = false;
+    if (max(fabs(l), fabs(r)) < CMD_DEADBAND_TICKS_S) { l = r = 0; spinning = false; return; }
 
-    float d = r - l;                       // yaw demand, preserved
-    float m = 0.5f * (l + r);              // forward demand
-    const float maxDiff = MAX_TICKS_S - MIN_TARGET_TICKS_S;
+    // Strictest limits that both sides can meet, in rev/s.
+    const float minRev = max(MIN_TARGET_TICKS_S / LB_TICKS_PER_REV, MIN_TARGET_TICKS_S / RB_TICKS_PER_REV);
+    // Forward is capped lower because RB is weak forward (RB_FWD_MAX_TICKS_S).
+    const float maxRevRev = min(MAX_TICKS_S / LB_TICKS_PER_REV, MAX_TICKS_S / RB_TICKS_PER_REV);
+    const float maxRevFwd = min(maxRevRev, RB_FWD_MAX_TICKS_S / RB_TICKS_PER_REV);
+    const float maxDiff = maxRevFwd - minRev;
+    const float HYST = 0.15f;                       // +/-15% of maxDiff around the switch point
 
-    if (fabs(m) < 1.0f || fabs(d) > maxDiff) {   // spin or tight turn: counter-rotate
-        float h = constrain(fabs(d) * 0.5f, MIN_TARGET_TICKS_S, MAX_TICKS_S);
-        float s = (d >= 0) ? 1.0f : -1.0f;
-        l = -s * h;
-        r =  s * h;
+    float lr = l / LB_TICKS_PER_REV, rr = r / RB_TICKS_PER_REV;
+    float d = rr - lr;                     // yaw demand, preserved
+    float m = 0.5f * (lr + rr);            // forward demand
+    bool pureSpin = fabs(m) < 0.002f;      // ~1.4 ticks/s
+
+    if (spinning) { if (!pureSpin && fabs(d) < maxDiff * (1.0f - HYST)) spinning = false; }
+    else          { if (pureSpin || fabs(d) > maxDiff * (1.0f + HYST)) spinning = true; }
+
+    if (spinning) {                        // spin or tight turn: counter-rotate
+        float s = (d >= 0) ? 1.0f : -1.0f;        // +1: right wheel forward
+        float h = constrain(fabs(d) * 0.5f, minRev, (s > 0) ? maxRevFwd : maxRevRev);
+        l = -s * h * LB_TICKS_PER_REV;
+        r =  s * h * RB_TICKS_PER_REV;
         return;
     }
 
     // Arc: both wheels turn the same way. Shift them together, keeping r - l exact.
+    // Inside the hysteresis band the slower wheel can end up a little under minRev; the PI holds it.
     float dir = (m >= 0) ? 1.0f : -1.0f;
-    float a = dir * l, b = dir * r;        // work in the direction of travel
+    const float maxRev = (dir > 0) ? maxRevFwd : maxRevRev;
+    float a = dir * lr, b = dir * rr;      // work in the direction of travel
     float lo = min(a, b);
-    if (lo < MIN_TARGET_TICKS_S) { float s = MIN_TARGET_TICKS_S - lo; a += s; b += s; }
+    if (lo < minRev) { float s = minRev - lo; a += s; b += s; }
     float hi = max(a, b);
-    if (hi > MAX_TICKS_S)        { float s = hi - MAX_TICKS_S;        a -= s; b -= s; }
-    l = dir * a;
-    r = dir * b;
+    if (hi > maxRev) { float s = hi - maxRev; a -= s; b -= s; }
+    l = dir * a * LB_TICKS_PER_REV;
+    r = dir * b * RB_TICKS_PER_REV;
 }
 
 // Zero the targets and cut the motors now. A wheel that is still rolling gets a short brake
@@ -89,6 +110,7 @@ void stopAll() {
     pwmL = pwmR = 0;
     leftSide.coast();
     rightSide.coast();
+    rightOpen.reset();
 }
 
 void apply(MotorDriver& side, const DriveCmd& c) {
@@ -173,7 +195,13 @@ void setup() {
     leftEnc.begin();
     rightEnc.begin();
     attachInterrupt(digitalPinToInterrupt(PIN_LB_ENC_INT), isrLeft, CHANGE);   // 2x decoding
-    attachInterrupt(digitalPinToInterrupt(PIN_RB_ENC_INT), isrRight, CHANGE);
+    if (RB_COUNT_ON_B) {
+        static_assert(PIN_RB_ENC_DIR == 4, "PCINT setup below assumes the right B wire is on D4");
+        PCMSK2 |= _BV(PCINT20);
+        PCICR |= _BV(PCIE2);
+    } else {
+        attachInterrupt(digitalPinToInterrupt(PIN_RB_ENC_INT), isrRight, CHANGE);
+    }
 
     imu.begin();
     imu.calibrateGyro(200);  // ~0.5 s, robot must be still
@@ -202,6 +230,7 @@ void loop() {
     float dt = (nowUs - lastSampleUs) * 1e-6f;
     lastSampleUs = nowUs;
 
+    rightEnc.setDirection(rightSide.direction());   // used by B-only counting
     long countL = leftEnc.count();   // 2x counts
     long countR = rightEnc.count();
     float rawL = (countL - lastCountL) * COUNT_TO_TICK / dt;   // 1x ticks/s
@@ -216,7 +245,8 @@ void loop() {
         leftSide.setFrontBoost(boost);
         rightSide.setFrontBoost(boost);
         apply(leftSide, leftPid.update(targetL, rawL, dt, now));
-        apply(rightSide, rightPid.update(targetR, rawR, dt, now));
+        if (RB_ENCODER_OK) apply(rightSide, rightPid.update(targetR, rawR, dt, now));
+        else               apply(rightSide, rightOpen.update(faultLatched ? 0.0f : targetR, dt, now));
         if (!faultLatched) checkFaults();
     } else {
         leftSide.setFrontBoost(0);
@@ -228,6 +258,10 @@ void loop() {
     }
 
     imu.read(imuRaw);
+    // No right encoder: report the open-loop position estimate instead, so the Pi's odometry
+    // follows what the right side was told to do. Open-loop test mode ('o') still sends the
+    // real encoder count, so the bench test keeps showing what the encoder sees.
+    if (!RB_ENCODER_OK && mode == MODE_PID) countR = rightOpen.counts2x();
     if (TELEMETRY_RAW_2X) link.sendTelemetry(now, countL, countR, imuRaw);
     else                  link.sendTelemetry(now, countL >> 1, countR >> 1, imuRaw);   // 1x-equivalent
 }

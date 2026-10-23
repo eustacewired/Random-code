@@ -35,6 +35,12 @@ public:
 
     uint8_t interruptPin() const { return pinInt_; }
 
+    // B-only mode (channel A unreliable): call tickB() on every edge of the DIR pin (channel B).
+    // Each B edge is one count, the same scale as 2x decoding on A. Direction can't come from A,
+    // so it comes from setDirection(): the side's current drive direction (0 = keep the last one).
+    void tickB() { count_ += dirHint_; }
+    void setDirection(int8_t d) { if (d != 0) dirHint_ = d; }
+
 private:
     uint8_t pinInt_, pinDir_;
     int8_t sign_;
@@ -42,4 +48,5 @@ private:
     volatile uint8_t* dirPort_ = nullptr;
     uint8_t intMask_ = 0, dirMask_ = 0;
     volatile long count_ = 0;
+    volatile int8_t dirHint_ = 1;
 };

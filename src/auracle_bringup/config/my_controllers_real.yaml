@@ -5,25 +5,28 @@
   ros__parameters:
     # --- Geometry: start from the sim values, then calibrate on the floor ---
     # drive_test --distance 1.0 prints the corrected wheel_radius.
-    wheel_radius: 0.0239
+    # 0.0239 only fitted the old, too-low ticks/rev (730/655). With the hand-counted
+    # 985/942 the same drive-test distances give ~0.033 m, the real wheel. Re-check with a 1 m drive.
+    wheel_radius: 0.033
     # Skid-steer turns scrub, so the *effective* separation is usually
     # bigger than the tape-measured one. drive_test --angle 360 prints it.
     wheel_separation: 0.2755
     cmd_vel_timeout: 0.5
 
     # --- Limits: the Nano clamps each rear wheel to 1400 ticks/s ---
-    # 1400 / 730 ticks/rev * 2*pi * 0.0239 m = ~0.29 m/s top speed per wheel.
+    # 1200 / 985 ticks/rev * 2*pi * 0.033 m = ~0.25 m/s top speed (left, the slower side).
     # Staying under that leaves the PID headroom, and a clamped wheel would
     # otherwise bend straight lines into arcs.
     linear.x.has_velocity_limits: true
-    linear.x.max_velocity: 0.25
-    linear.x.min_velocity: -0.25
+    # Right rear is weak forward (firmware caps it at 650 ticks/s = 0.69 rev/s = ~0.14 m/s).
+    linear.x.max_velocity: 0.14
+    linear.x.min_velocity: -0.14
     linear.x.has_acceleration_limits: true
     linear.x.max_acceleration: 0.6
     linear.x.min_acceleration: -0.6
     angular.z.has_velocity_limits: true
-    angular.z.max_velocity: 1.5
-    angular.z.min_velocity: -1.5
+    angular.z.max_velocity: 1.0   # a spin is capped by the same right-forward limit
+    angular.z.min_velocity: -1.0
     angular.z.has_acceleration_limits: true
     angular.z.max_acceleration: 3.0
     angular.z.min_acceleration: -3.0

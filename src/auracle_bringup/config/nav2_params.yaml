@@ -112,11 +112,11 @@ controller_server:
       approach_velocity_scaling_dist: 0.5
       use_collision_detection: true
       max_allowed_time_to_collision_up_to_carrot: 1.0
-      use_rotate_to_heading: false   # RPP ignores allow_reversing when this is true; reversing suits the maze better than spinning
+      use_rotate_to_heading: true    # turn on the spot ONCE when heading error > rotate_to_heading_min_angle, then drive. RPP needs allow_reversing false for this
       rotate_to_heading_angular_vel: 0.9            # spins run 0.72-1.0 rad/s on the real robot
-      rotate_to_heading_min_angle: 0.6
+      rotate_to_heading_min_angle: 0.5   # ~30 deg. Smaller errors are steered out with arcs (firmware arcs up to ~0.17 rad/s)
       max_angular_accel: 3.0                        # = diff_cont angular accel limit
-      allow_reversing: true
+      allow_reversing: false   # must be false with use_rotate_to_heading
       #
       # ---- To go back to MPPI, use lighter settings than before (still heavy on a Pi):
       # plugin: "nav2_mppi_controller::MPPIController"

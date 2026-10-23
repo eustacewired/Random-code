@@ -70,18 +70,22 @@ void conditionTargets(float& l, float& r) {
     // Forward is capped lower because RB is weak forward (RB_FWD_MAX_TICKS_S).
     const float maxRevRev = min(MAX_TICKS_S / LB_TICKS_PER_REV, MAX_TICKS_S / RB_TICKS_PER_REV);
     const float maxRevFwd = min(maxRevRev, RB_FWD_MAX_TICKS_S / RB_TICKS_PER_REV);
-    const float maxDiff = maxRevFwd - minRev;
-    const float HYST = 0.15f;                       // +/-15% of maxDiff around the switch point
 
     float lr = l / LB_TICKS_PER_REV, rr = r / RB_TICKS_PER_REV;
-    float d = rr - lr;                     // yaw demand, preserved
+    float d = rr - lr;                     // yaw demand
     float m = 0.5f * (lr + rr);            // forward demand
-    bool pureSpin = fabs(m) < 0.002f;      // ~1.4 ticks/s
+    float dir = (m >= 0) ? 1.0f : -1.0f;
+    // Inner wheel speed in the direction of travel, relative to forward demand:
+    // 1 = straight, 0 = inner wheel stopped, < 0 = the caller wants the inner wheel reversed.
+    float q = (fabs(m) < 0.002f) ? -1.0f : min(dir * lr, dir * rr) / fabs(m);
 
-    if (spinning) { if (!pureSpin && fabs(d) < maxDiff * (1.0f - HYST)) spinning = false; }
-    else          { if (pureSpin || fabs(d) > maxDiff * (1.0f + HYST)) spinning = true; }
+    // Pivot only when the inner wheel is really asked to run backwards (a turn-on-the-spot command).
+    // A sharp-but-forward arc used to become a pivot as soon as it exceeded what the wheels can arc,
+    // and Nav2's small steering corrections then flipped arc <-> pivot: the "aggressive" turning.
+    if (spinning) { if (q > 0.0f) spinning = false; }
+    else          { if (q < -0.3f) spinning = true; }
 
-    if (spinning) {                        // spin or tight turn: counter-rotate
+    if (spinning) {                        // counter-rotate
         float s = (d >= 0) ? 1.0f : -1.0f;        // +1: right wheel forward
         float h = constrain(fabs(d) * 0.5f, minRev, (s > 0) ? maxRevFwd : maxRevRev);
         l = -s * h * LB_TICKS_PER_REV;
@@ -89,15 +93,17 @@ void conditionTargets(float& l, float& r) {
         return;
     }
 
-    // Arc: both wheels turn the same way. Shift them together, keeping r - l exact.
-    // Inside the hysteresis band the slower wheel can end up a little under minRev; the PI holds it.
-    float dir = (m >= 0) ? 1.0f : -1.0f;
+    // Arc: both wheels turn the same way. Lift both so the slower one reaches minRev, cap the faster
+    // at maxRev; if the asked-for turn is sharper than that range allows, drive the tightest arc
+    // (slow wheel at minRev, fast wheel at maxRev) instead of pivoting.
     const float maxRev = (dir > 0) ? maxRevFwd : maxRevRev;
     float a = dir * lr, b = dir * rr;      // work in the direction of travel
     float lo = min(a, b);
     if (lo < minRev) { float s = minRev - lo; a += s; b += s; }
     float hi = max(a, b);
     if (hi > maxRev) { float s = hi - maxRev; a -= s; b -= s; }
+    if (a < minRev) a = minRev;
+    if (b < minRev) b = minRev;
     l = dir * a * LB_TICKS_PER_REV;
     r = dir * b * RB_TICKS_PER_REV;
 }

@@ -20,7 +20,7 @@
     right_wheel_names: ['right_wheel_one_joint', 'right_wheel_three_joint']
 
     wheel_separation: 0.2755
-    wheel_radius: 0.0239
+    wheel_radius: 0.0375   # sim: matches the URDF wheel (75 mm wheels)
     enable_odom_tf: false
 
 /**/imu_broadcaster:
@@ -28,5 +28,5 @@
     sensor_name: imu_sensor
     frame_id: imu_link
     static_covariance_orientation: [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    static_covariance_angular_velocity: [0.02, 0.0, 0.0, 0.0, 0.02, 0.0, 0.0, 0.0, 0.02]
+    static_covariance_angular_velocity: [0.0004, 0.0, 0.0, 0.0, 0.0004, 0.0, 0.0, 0.0, 0.0004]   # sd ~1.1 deg/s with motors running (2026-10-25)
     static_covariance_linear_acceleration: [0.04, 0.0, 0.0, 0.0, 0.04, 0.0, 0.0, 0.0, 0.04]

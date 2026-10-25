@@ -7,28 +7,29 @@
     # drive_test --distance 1.0 prints the corrected wheel_radius.
     # 0.0239 only fitted the old, too-low ticks/rev (730/655). With the hand-counted
     # 985/942 the same drive-test distances give ~0.033 m, the real wheel. Re-check with a 1 m drive.
-    wheel_radius: 0.033
+    # 75 mm spiked wheels (2026-10-25). Nominal; confirm with the 1 m drive (calibration step 12).
+    wheel_radius: 0.0375
     # Skid-steer turns scrub, so the *effective* separation is usually
     # bigger than the tape-measured one. drive_test --angle 360 prints it.
     # Lidar-measured 2026-10-23 (scan_calib.py): wheel odometry over-reported spins by x1.34 at 0.2755
     # (right turns x1.15, left x1.51 - skid-steer slip). Effective separation = 0.2755 * 1.34.
-    wheel_separation: 0.369
+    wheel_separation: 0.59   # effective skid-steer track: right spin 2026-10-25, all wheels turning (geometric ~0.37)
     cmd_vel_timeout: 0.5
 
     # --- Limits: the Nano clamps each rear wheel to 1400 ticks/s ---
-    # 1200 / 985 ticks/rev * 2*pi * 0.033 m = ~0.25 m/s top speed (left, the slower side).
+    # 1200 / 985 ticks/rev * 2*pi * 0.0375 m = ~0.29 m/s top speed (left); forward is capped lower by RB.
     # Staying under that leaves the PID headroom, and a clamped wheel would
     # otherwise bend straight lines into arcs.
     linear.x.has_velocity_limits: true
     # Right rear is weak forward (firmware caps it at 650 ticks/s = 0.69 rev/s = ~0.14 m/s).
-    linear.x.max_velocity: 0.16   # forward: weak right rear (RB_FWD_MAX_TICKS_S 740)
-    linear.x.min_velocity: -0.25  # backward: right rear is healthy backward
+    linear.x.max_velocity: 0.20   # right rear healthy again (2026-10-25); kept low for the 0.43 m maze corridors
+    linear.x.min_velocity: -0.20
     linear.x.has_acceleration_limits: true
-    linear.x.max_acceleration: 0.6
-    linear.x.min_acceleration: -0.6
+    linear.x.max_acceleration: 0.5
+    linear.x.min_acceleration: -0.5
     angular.z.has_velocity_limits: true
-    angular.z.max_velocity: 1.3   # right turns can use it; left turns are capped by the weak right rear (firmware)
-    angular.z.min_velocity: -1.3
+    angular.z.max_velocity: 1.0   # with the 0.59 m track: 0.30 m/s at each wheel
+    angular.z.min_velocity: -1.0
     angular.z.has_acceleration_limits: true
     angular.z.max_acceleration: 3.0
     angular.z.min_acceleration: -3.0
@@ -48,4 +49,4 @@
 # every 3rd cycle and burned ~50% more CPU in the controller_manager thread for nothing.
 /**/controller_manager:
   ros__parameters:
-    update_rate: 20
+    update_rate: 40   # matches the Nano's 40 Hz telemetry (CONTROL_PERIOD_MS 25)

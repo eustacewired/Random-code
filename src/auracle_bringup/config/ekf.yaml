@@ -1,6 +1,6 @@
 /**/ekf_filter_node:
     ros__parameters:
-        frequency: 20.0   # matches the 20 Hz Nano telemetry / controller_manager rate on the real robot
+        frequency: 30.0   # Nano telemetry and controller_manager are 40 Hz now
         two_d_mode: true
         print_diagnostics: false
         debug: false
@@ -17,24 +17,24 @@
         #               roll_vel, pitch_vel, yaw_vel,
         #               x_accel , y_accel  , z_accel]
         odom0: diff_cont/odom
-        # vyaw from the wheels is ON while the IMU is dead (Nano telemetry shows all-zero IMU,
-        # 2026-10-23). Turn it back off and re-enable imu0 below once the MPU6050 answers again.
+        # Wheels give vx only. Yaw rate comes from the IMU: skid-steer wheel yaw is unreliable
+        # (spin tests 2026-10-26: effective track 0.19-0.80 m depending on the sticky left front).
         odom0_config: [false, false, false,
                        false, false, false,
                        true,  false, false,
-                       false, false, true,
+                       false, false, false,
                        false, false, false]
         odom0_differential: false
         odom0_relative: false
-        # imu0: imu_broadcaster/imu
-        # imu0_config: [false, false, false,
-        # false, false, false,
-        # false, false, false,
-        # false, false, true,
-        # false, false, false]
-        # imu0_differential: false
-        # imu0_relative: true
-        # imu0_remove_gravitational_acceleration: true
+        # MPU6050 back on A4/D11 (2026-10-25): gyro z bias 0.004 deg/s, sign checked by hand turns.
+        imu0: imu_broadcaster/imu
+        imu0_config: [false, false, false,
+                      false, false, false,
+                      false, false, false,
+                      false, false, true,
+                      false, false, false]
+        imu0_differential: false
+        imu0_relative: false
 
         use_control: false
 

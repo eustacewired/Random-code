@@ -71,7 +71,7 @@ slam_toolbox:
 
     # Scan Matcher Parameters
     distance_variance_penalty: 0.15   # was 0.3: trust scans much more than wheel odometry
-    angle_variance_penalty: 0.15      # was 0.3: wheel yaw over-reports turns and there is no IMU
+    angle_variance_penalty: 0.3       # back to default: odom yaw is gyro-based now (EKF + IMU)
 
     fine_search_angle_offset: 0.00349     
     coarse_search_angle_offset: 0.349   
@@ -80,4 +80,4 @@ slam_toolbox:
     minimum_distance_penalty: 0.5
     use_response_expansion: true
     min_pass_through: 2
-    occupancy_threshold: 0.1
+    occupancy_threshold: 0.1

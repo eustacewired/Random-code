@@ -35,7 +35,7 @@
     # my_controllers_real.yaml). The sim's base update_rate is 30 Hz, so it sees a
     # 20 Hz stream; that is harmless because the commands are already smooth ramps.
     # If you ever change update_rate on the robot, change this to match.
-    publish_rate: 20.0
+    publish_rate: 40.0
     # Time constant of EACH of two cascaded filters. ~4x this to reach 90 % speed
     # (about 200 ms at 20 Hz). Was 0.12 / 0.15, which took ~400 ms and felt laggy.
     # Bigger = smoother but lazier.

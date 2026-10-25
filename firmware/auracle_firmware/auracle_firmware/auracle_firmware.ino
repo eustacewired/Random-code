@@ -20,15 +20,17 @@ void get_mcusr(void) {
 
 
 // MODE_PID with zero targets is "stopped": the controllers brake (if still rolling) and coast.
-enum Mode : uint8_t { MODE_PID, MODE_OPEN_LOOP };
+enum Mode : uint8_t { MODE_PID, MODE_OPEN_LOOP, MODE_RAW };   // MODE_RAW: 'p'/'q' test commands
 
 const WheelParams LB_PARAMS = {LB_KICK_FWD, LB_KICK_REV, LB_FLOOR_FWD, LB_FLOOR_REV, LB_KP, LB_KI,
                                LB_FF_FWD_BASE, LB_FF_FWD_K, LB_FF_REV_BASE, LB_FF_REV_K};
 const WheelParams RB_PARAMS = {RB_KICK_FWD, RB_KICK_REV, RB_FLOOR_FWD, RB_FLOOR_REV, RB_KP, RB_KI,
                                RB_FF_FWD_BASE, RB_FF_FWD_K, RB_FF_REV_BASE, RB_FF_REV_K};
 
-MotorDriver leftSide(PIN_L_FWD, PIN_L_REV, PIN_LB_EN, PIN_LF_EN, LF_TRIM_FWD, LF_TRIM_REV, LF_MIN_PWM);
-MotorDriver rightSide(PIN_R_FWD, PIN_R_REV, PIN_RB_EN, PIN_RF_EN, RF_TRIM_FWD, RF_TRIM_REV, RF_MIN_PWM);
+const MotorDriver::FrontParams LF_PARAMS = {LF_OFFSET_FWD, LF_OFFSET_REV, LF_KICK_FRONT_FWD, LF_KICK_FRONT_REV, LF_MIN_FWD, LF_MIN_REV};
+const MotorDriver::FrontParams RF_PARAMS = {RF_OFFSET_FWD, RF_OFFSET_REV, RF_KICK_FRONT_FWD, RF_KICK_FRONT_REV, RF_MIN_FWD, RF_MIN_REV};
+MotorDriver leftSide(PIN_L_FWD, PIN_L_REV, PIN_LB_EN, PIN_LF_EN, LF_PARAMS);
+MotorDriver rightSide(PIN_R_FWD, PIN_R_REV, PIN_RB_EN, PIN_RF_EN, RF_PARAMS);
 EncoderDriver leftEnc(PIN_LB_ENC_INT, PIN_LB_ENC_DIR, LB_ENC_SIGN);
 EncoderDriver rightEnc(PIN_RB_ENC_INT, PIN_RB_ENC_DIR, RB_ENC_SIGN);
 PIDController leftPid(LB_PARAMS), rightPid(RB_PARAMS);
@@ -42,6 +44,7 @@ unsigned long faultMs = 0;       // when the fault latched
 uint8_t faultRetries = 0;        // auto-restarts since the last zero command
 float targetL = 0, targetR = 0;  // 1x ticks/s
 int pwmL = 0, pwmR = 0;          // open loop
+int rawLB = 0, rawLF = 0, rawRB = 0, rawRF = 0;   // MODE_RAW, per wheel
 unsigned long lastCmdMs = 0, lastCtrlMs = 0, lastSampleUs = 0;
 long lastCountL = 0, lastCountR = 0;
 int16_t imuRaw[6] = {0, 0, 0, 0, 0, 0};
@@ -114,6 +117,7 @@ void stopAll() {
     mode = MODE_PID;
     targetL = targetR = 0;
     pwmL = pwmR = 0;
+    rawLB = rawLF = rawRB = rawRF = 0;
     leftSide.coast();
     rightSide.coast();
     rightOpen.reset();
@@ -187,6 +191,24 @@ void handle(const Command& cmd) {
                 mode = MODE_OPEN_LOOP;
             }
             break;
+        // Test only: p <LB> <LF> / q <RB> <RF> = raw signed PWM per wheel, used to find each motor's
+        // start/stop PWM (front_offset_test.py). Same watchdog as 'o'.
+        case 'p':
+        case 'q':
+            if (faultLatched) break;
+            lastCmdMs = millis();
+            if (cmd.type == 'p') { rawLB = constrain((int)cmd.a, -MAX_PWM, MAX_PWM); rawLF = constrain((int)cmd.b, -MAX_PWM, MAX_PWM); }
+            else                 { rawRB = constrain((int)cmd.a, -MAX_PWM, MAX_PWM); rawRF = constrain((int)cmd.b, -MAX_PWM, MAX_PWM); }
+            targetL = targetR = 0;
+            if (mode != MODE_RAW) {
+                leftPid.reset();
+                rightPid.reset();
+                mode = MODE_RAW;
+            }
+            break;
+        // Test only: g <kp> <ki> / h <kp> <ki> = live left / right PI gains (pid_tune.py).
+        case 'g': leftPid.setGains(cmd.a, cmd.b); break;
+        case 'h': rightPid.setGains(cmd.a, cmd.b); break;
         case 's':
             faultLatched = false;
             faultRetries = 0;
@@ -214,8 +236,10 @@ void setup() {
         attachInterrupt(digitalPinToInterrupt(PIN_RB_ENC_INT), isrRight, CHANGE);
     }
 
-    imu.begin();
-    imu.calibrateGyro(200);  // ~0.5 s, robot must be still
+    if (IMU_ENABLED) {
+        imu.begin();
+        imu.calibrateGyro(200);  // ~0.5 s, robot must be still
+    }
 
     wdt_enable(WDTO_2S);  // after calibration so it can't trip it
     lastCmdMs = lastCtrlMs = millis();
@@ -230,7 +254,7 @@ void loop() {
     while (link.poll(cmd)) handle(cmd);
 
     unsigned long now = millis();
-    bool driving = (mode == MODE_OPEN_LOOP) || targetL != 0 || targetR != 0;
+    bool driving = (mode != MODE_PID) || targetL != 0 || targetR != 0;
     if (driving && now - lastCmdMs > COMMS_TIMEOUT_MS) stopAll();
 
     if (now - lastCtrlMs < CONTROL_PERIOD_MS) return;
@@ -266,11 +290,16 @@ void loop() {
         rightSide.setFrontBoost(0);
         leftPid.observe(rawL);
         rightPid.observe(rawR);
-        leftSide.drive(pwmL);
-        rightSide.drive(pwmR);
+        if (mode == MODE_RAW) {
+            leftSide.driveRaw(rawLB, rawLF);
+            rightSide.driveRaw(rawRB, rawRF);
+        } else {
+            leftSide.drive(pwmL);
+            rightSide.drive(pwmR);
+        }
     }
 
-    imu.read(imuRaw);
+    if (IMU_ENABLED) imu.read(imuRaw);
     // No right encoder: report the open-loop position estimate instead, so the Pi's odometry
     // follows what the right side was told to do. Open-loop test mode ('o') still sends the
     // real encoder count, so the bench test keeps showing what the encoder sees.

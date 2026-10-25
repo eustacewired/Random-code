@@ -6,6 +6,8 @@
 //   v <left_ticks_s> <right_ticks_s>   closed-loop velocity target for the rear wheels
 //                                      (1x ticks/s; |v| below MIN_TARGET_TICKS_S = stop)
 //   o <left_pwm> <right_pwm>           open-loop rear PWM, fronts follow (front-offset test)
+//   p <LB> <LF> / q <RB> <RF>          TEST: raw signed PWM per wheel (no trim/floor/soft start)
+//   g <kp> <ki> / h <kp> <ki>          TEST: live left / right PI gains (not saved)
 //   s                                  stop, and clear a latched fault
 //                                      (a 'v 0 0' also clears a latched fault)
 // Nano -> Pi:

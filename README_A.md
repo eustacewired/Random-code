@@ -145,7 +145,7 @@ Until RB is fixed, the 0.16 m/s forward cap (RB_FWD_MAX_TICKS_S 740) limits the 
 ## Zenoh routing
 ROS2 Middleware: Zenoh
 When using the official ROS 2 Jazzy Zenoh middleware (rmw_zenoh port 7447), Zenoh respects your ROS_DOMAIN_ID. It uses the domain ID to partition discovery traffic and keep separate ROS graphs isolated, exactly like standard CycloneDDS or FastDDS do. Zenoh utilizes a peer-to-peer or router-based discovery mechanism. By default rmw_zenoh does not use multicast scouting: nodes connect to a router (tcp/localhost:7447 unless configured), so the PC is pointed at the Pi's router by IP (see PC Setup). Across different networks, only one central Zenoh router is needed on a known IP (or domain name). All dynamic-IP clients simply connect to that router, and Zenoh handles the routing automatically. Zenoh maps the Domain ID to a string path inside its session expressions, meaning it can comfortably support any ID from 0 to 255 (and even higher depending on the middleware version).
-Everyone else is on domain 0, so this setup uses its own unique ROS_DOMAIN_ID (42 in the examples, change it). It is set in three places that must match: the Pi's zenoh.service, the Pi's ~/.bashrc, and DOMAIN_ID in connect_pi.sh on the PC.
+Everyone else is on domain 0, so this setup uses its own unique ROS_DOMAIN_ID (89 here). It is set in three places that must match: the Pi's zenoh.service, the Pi's ~/.bashrc, and DOMAIN_ID in connect_pi.sh on the PC.
 
 ### Prerequisites
 Both Pi and PC
@@ -171,7 +171,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=auracle
-Environment="RMW_IMPLEMENTATION=rmw_zenoh_cpp" "ROS_DOMAIN_ID=42"
+Environment="RMW_IMPLEMENTATION=rmw_zenoh_cpp" "ROS_DOMAIN_ID=89"
 ExecStart=/bin/bash -c "source /opt/ros/jazzy/setup.bash && exec ros2 run rmw_zenoh_cpp rmw_zenohd"
 Restart=on-failure
 RestartSec=5
@@ -201,7 +201,7 @@ For ROS nodes you run on the Pi, add this to ~/.bashrc (same domain ID as the se
 ```
 source /opt/ros/jazzy/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-export ROS_DOMAIN_ID=42
+export ROS_DOMAIN_ID=89
 ```
 ### Pc setup
 To connect your PC and Raspberry Pi over a local network without internet access, they need to be on the same IP subnet and be able to find each other. Moving to a multi-network setup (e.g., across different subnets, VPNs, or cellular links) requires the PC to be explicitly pointed to the Pi's IP address. A bash script (`connect_pi.sh`) created on the PC automatically scans your local network to find the headless Pi, sets up your ROS 2 Zenoh environment (including the unique domain ID), and sets ZENOH_CONFIG_OVERRIDE so the PC connects to the Pi's router.
@@ -211,7 +211,7 @@ To connect your PC and Raspberry Pi over a local network without internet access
 # Configuration - Change this to your Pi's actual hostname (or pass the Pi's IP as the first argument)
 PI_HOSTNAME="${1:-auracle.local}"
 # Configuration - your unique ROS domain ID (must match the Pi's zenoh.service and ~/.bashrc)
-DOMAIN_ID=42
+DOMAIN_ID=89
 
 echo "===================================================="
 echo "📡 Initializing ROS 2 Jazzy & Zenoh LAN Connection"

@@ -209,13 +209,72 @@ It sometimes locks up when the lidar node starts (kernel: `cp210x ttyUSB1: faile
 - `arduino-cli` installed in `~/.local/bin`, so the Nano is compiled and flashed on the Pi.
 - Nav2 installed: `ros-jazzy-navigation2`.
 
+## 4.9 Findings 2026-10-23 (afternoon)
+- **IMU: the I2C clock line SCL (A5) cannot be pulled LOW**: the Nano drives it LOW and it still reads HIGH (`~/auracle_tools/i2c_pins`). SDA (A4) is fine. With SCL stuck HIGH no I2C device can answer, which is why a brand-new MPU6050 also reads zero. Either something on the SCL net is tied to 5 V (wire touching 5 V, wrong module pin, solder bridge) or the Nano's A5 pin is damaged.
+- Pi clock not synchronised (`chronyc tracking`: Not synchronised, no `/etc/chrony/sources.d/pc.sources`), and logs show the clock jumped. No `zenoh.service` on the Pi, and the Pi uses `ROS_DOMAIN_ID=62` (README_A says 42).
+- New firmware test commands: `p <LB> <LF>` / `q <RB> <RF>` (raw signed PWM per wheel) and `g <kp> <ki>` / `h <kp> <ki>` (live left/right PI gains). Normal driving is unchanged.
+- New tools: `~/auracle_tools/front_offset_test.py` (interactive: press ENTER when each wheel starts/stops) and `~/auracle_tools/pid_tune.py` (automatic step tests, `--sweep` ranks a kp x ki grid).
+
+## 4.10 Findings and suggestions 2026-10-25 (network and time)
+- **IMU: the Nano's A5 pin is damaged.** With the SCL wire unplugged, A5 still cannot be pulled LOW, so nothing outside the Nano is causing it. Options: replace the Nano (cleanest), or run the IMU on software I2C on two other pins (A2/A3 if the stepper isn't used yet), which needs a small `imu_driver` change.
+- **Time sync works**: the Pi's chrony is locked to the PC (192.168.100.250, stratum 11, offset < 1 ms, Leap status Normal). `systemd-timesyncd` doesn't exist on this Ubuntu image (only a `timesync1` alias), so README_A's "stop timesyncd" step does nothing here and can be skipped.
+- **Zenoh**: the router service on the Pi is `zenoh-router.service` (active, `ROS_DOMAIN_ID=89`, port 7447), not `zenoh.service` as README_A names it. Domain is 89 everywhere now (README_A updated, Pi `~/.bashrc`, service).
+- **New `pc/auracle_up.sh`** (run in WSL, sourced) replaces `connect_pi.sh` + `sync_time.sh`, and also turns off Pi Wi-Fi power save (now and on every boot). See below.
+
+### Suggested edits to README_A's PC scripts (if you keep them instead of `pc/auracle_up.sh`)
+| Problem seen | Cause | Fix |
+|---|---|---|
+| `connect_pi.sh` hangs after "Ready!" | `ros2 daemon stop` at the end is slow | Run it in the background: `( ros2 daemon stop >/dev/null 2>&1 ) &` |
+| Both scripts resolve `auracle.local` again | mDNS lookups from WSL are slow and sometimes time out | Resolve once, cache the IP (e.g. `~/.auracle_pi_ip`), try the cached IP with `ping -c1 -W1` first, and wrap `getent` in `timeout 3` |
+| `sync_time.sh` rewrites `pc.sources` every time | Unconditional `tee` + `chronyc reload sources` | Only write and reload when the IP changed |
+| "stop/disable systemd-timesyncd" | Unit doesn't exist on the Pi | Guard it: `systemctl list-unit-files \| grep -q '^systemd-timesyncd' && ...` |
+| README_A says `zenoh.service` | The Pi's unit is `zenoh-router.service` | Rename in README_A, or rename the unit |
+
+`pc/auracle_up.sh` already does all of the above, plus Wi-Fi power save, in one SSH login.
+
+### SSH from the PC
+Run the scripts **in WSL** (where chrony serves the time and the ROS nodes run). The script makes its own SSH connection to the Pi, so the SSH key must belong to WSL: run `ssh-copy-id auracle@<pi_ip>` once **from a WSL terminal** (Windows PowerShell has a separate `~/.ssh`). For your own interactive sessions, any `ssh auracle@auracle.local` works, from WSL or PowerShell.
+
+## 4.11 Changes 2026-10-25 (timing, baud, IMU pins)
+- **500000 baud and a 40 Hz loop**: `BAUDRATE` 500000 (`arduino_comms.hpp` `BAUD_500000`), `CONTROL_PERIOD_MS` 50 -> 25, controller_manager `update_rate` 40, joystick / key_drive `publish_rate` 40. Re-timed so behaviour per second is unchanged or quicker: `PWM_RISE_PER_CALL` 35 -> 18, `SPEED_FILTER_ALPHA` 0.4 -> 0.3, `KICK_MS` 450 -> 350, `BRAKE_MS` 200 -> 120, `REVERSE_WAIT_MS` 800 -> 500, fault counts doubled (12 / 80 / 40) so their time windows stay the same, `TARGET_RAMP_TICKS_S2` 2000 -> 4000. Verified: 40.2 Hz telemetry, 24-26 ms spacing, 0 garbled lines. The test tools in `~/auracle_tools` use 500000 too (`flash_nano.sh` keeps 115200: that is the bootloader's upload speed).
+- **IMU on software I2C**: `imu_driver.cpp` no longer uses `Wire`. It bit-bangs open-drain I2C on `PIN_IMU_SCL` A2 / `PIN_IMU_SDA` A3 (~100 kHz, ~1.5 ms per read, no wait loops), with a 9-clock bus recovery at boot and `whoAmI()`.
+- **IMU is switched OFF (`IMU_ENABLED = false`)** until the A2/A3 wiring is checked. A pin probe found A3 held hard at 5 V and A2 at ground, which is what the IMU's VCC and GND pins on A3/A2 would look like. Driving a line wired to VCC LOW shorts it and can kill the pin (possibly how A5 died). A5 re-tested with nothing attached: still cannot be pulled LOW, so it is damaged.
+
+## 4.12 Nano pin scan 2026-10-25
+Every pin that's safe to drive was driven LOW/HIGH and read back with nothing attached (`~/auracle_tools/pin_scan`):
+A0, A1, A4, D7, D8, D11 ok. **A3 and A5 stuck HIGH (cannot be driven LOW): damaged.** A2 drives fine but its pull-up reads 0 (something sinks it to ground): unreliable. D13 pull-up reads 0 because of the onboard LED (fine as an output only). Three of six analog pins are faulty, so the Nano is partly damaged and worth replacing.
+IMU moved to software I2C on **SDA = A4, SCL = D11** (`PIN_IMU_SDA` / `PIN_IMU_SCL`). D11 was reserved for the servo in README_A; the servo only needs an output and can use A2.
+
+## 4.13 Calibration session 2026-10-25 (steps 0-8, wheels in the air)
+| Step | Result | Applied |
+|---|---|---|
+| 0 IMU pins | Pin scan: A3, A5 stuck HIGH; A2 pull-up reads 0. IMU on **SDA A4 / SCL D11** answers at 0x68, WHO_AM_I 0x72 | `PIN_IMU_SDA` A4, `PIN_IMU_SCL` 11, `IMU_ENABLED` true |
+| 1 IMU at rest | 40.1 Hz with IMU reads; gravity 1.06 g (clone scale), tilt 3.2 deg, gyro z bias 0.004 deg/s (0.2 deg/min drift), noise 0.07 deg/s | none needed |
+| 2 IMU axes | Hand turns: left +354.6 deg, right -352.6 deg (for 360) | sign correct, no URDF change |
+| 3 Encoders | LB 987/turn (A+B, counts down backward). RB **990**/turn with A+B (9880/10 fwd, -2002/2 back); B-only gave 992. The old 942 was A dropping pulses | `RB_TICKS_PER_REV` / xacro 990; `RB_COUNT_ON_B` false |
+| 4 Directions | All four turn forward. LF needs more than PWM 150 to start; it hums first (damaged, high friction). RB forward now ~= reverse (913 vs -938 at 150): the "weak forward" was the wiring fault | RB caps removed |
+| 5 Start/stop PWM | LF 96/54 fwd, 214/132 rev; RF 56/32, 58/28; LB 56/30, 60/34; RB 56/26, 48/30 | new front model: `front = rear + OFFSET`, `MIN`, front `KICK` (`LF/RF_OFFSET_*`, `*_KICK_FRONT_*`, `LF/RF_MIN_*`); rear kicks LB 64/69, RB 64/55 |
+| 6 Rear power model | Both rears nearly identical; ~1420 ticks/s at PWM 250 (~0.34 m/s in air) | `LB_FF_FWD` 17.3+0.1590, `LB_FF_REV` 14.7+0.1585, `RB_FF_FWD` 14.1+0.1647, `RB_FF_REV` 14.9+0.1565; floors 70 |
+| 7-8 Speed PI | Two sweeps (18 runs). Chosen for accuracy in BOTH directions. Confirm run: steady error within +-1.3 %, ripple <= 2.7 %, all steps fwd and rev | LB kp 0.045 ki 0.30; RB kp 0.0375 ki 0.40 |
+| IMU under load | 322 lines with both rears at 150: no zero or stale IMU readings | - |
+
+Also: 75 mm spiked wheels: URDF `wheel_radius` 0.0375 (was 0.0239), base_footprint height 0.1082 (was 0.0946), `my_controllers*.yaml` `wheel_radius` 0.0375 (confirm in step 12). Tools: `~/auracle_tools/ff_sweep.py`, `pid_tune.py --sweep --kp-mult ... --ki-mult ...` (smoothed, per-side ranking), `front_offset_test.py [LF RF LB RB]`.
+
+## 4.14 Floor tests and nav tuning 2026-10-26
+- Floor tests (`~/auracle_tools/calib_floor.py`, logs in `~/auracle_tools/runs/calib_floor*.log`). The LF (damaged) is bistable: it stalls below ~230 PWM on the floor and races once free. LF_MIN 60/145 -> robot curved 68 deg LEFT over 0.8 m; LF_MIN 230/255 (current) -> 33 deg RIGHT. Needs a new motor or a gyro-trimmed LF (not done).
+- Effective track width: right spin with all wheels turning = 0.59 m (other spins 0.19-0.80, skewed by LF).
+- EKF: yaw rate from the IMU, wheels give vx only. IMU angular-velocity covariance 0.0004.
+- diff_cont: wheel_separation 0.59, linear +-0.20 m/s, accel 0.5, angular 1.0.
+- Nav2: AMCL alpha1/2 0.25, goal xy 0.12, RPP 0.15 m/s, rotate 0.8 rad/s, velocity smoother 0.18 m/s, accel 0.5 / 1.5. slam_toolbox angle_variance_penalty 0.3.
+- Script bug fixed: drive_test/spin_test integrated gy (pitch) instead of gz; the first straight-run heading results were invalid.
+
 ## 5. Pending / open issues
 
 | Issue | Status / next step |
 |---|---|
-| **IMU not responding** | Unplug only the IMU's SDA/SCL and rerun `imu_probe`. "Nothing answered" without TIMEOUT = bad module, replace it. TIMEOUT still = Nano A4/A5 side. When fixed: re-enable `imu0` in `ekf.yaml` and set `odom0_config` vyaw back to false |
-| **Pi power cuts** | Check and resolder the cut USB-C cable and the buck terminals. Raise the buck output to ~5.15 V at the Pi. Capacitors on the buck input. Or run the Pi from a USB-C power bank. `power_log.sh` records the 5 V history for the next cut. Consider removing `usb_max_current_enable=1` |
-| **Wi-Fi power save** | `sudo iw dev wlan0 set power_save off`. To make it permanent: `printf '[connection]\nwifi.powersave = 2\n' \| sudo tee /etc/NetworkManager/conf.d/wifi-powersave-off.conf` |
+| **IMU not responding** | Nano A5 pin damaged (4.10). Replace the Nano, or move the IMU to software I2C on A2/A3. When fixed: re-enable `imu0` in `ekf.yaml` and set `odom0_config` vyaw back to false |
+| **Pi power cuts** | Check and resolder the cut USB-C cable and the buck terminals. Raise the buck output to ~5.15 V at the Pi. Capacitors on the buck input. Or run the Pi from a USB-C power bank. `power_log.sh` records the 5 V history for the next cut. **Being undone:** `usb_max_current_enable=1` (line 2 of `/boot/firmware/config.txt`) seemed to make the shut-offs more frequent. Remove it with `sudo sed -i '/^usb_max_current_enable=1$/d' /boot/firmware/config.txt` and reboot |
+| **Wi-Fi power save** | `source pc/auracle_up.sh` turns it off now and on every boot. By hand: `sudo iw dev wlan0 set power_save off`. To make it permanent: `printf '[connection]\nwifi.powersave = 2\n' \| sudo tee /etc/NetworkManager/conf.d/wifi-powersave-off.conf` |
 | **Right rear weak forward** | Hardware: check its L298 channel and motor, or swap to MOSFET drivers. When repaired: raise `RB_FWD_MAX_TICKS_S`, restore `RB_FF_FWD_*`, retune `RF_TRIM_FWD`, then raise the forward speed limits again |
 | **Right encoder dropouts** | Find the intermittent connection. When fixed: `RB_COUNT_ON_B = false` |
 | **Lidar CP2102 lockups** | Replug the lidar, then kill the hung `rplidar_composition` so the launch respawns it. Try a black USB 2.0 port, or a powered hub. Replace the adapter if it continues |

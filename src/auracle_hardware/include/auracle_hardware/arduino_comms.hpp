@@ -38,7 +38,7 @@ public:
   void connect(const std::string & device)
   {
     port_.Open(device);
-    port_.SetBaudRate(LibSerial::BaudRate::BAUD_115200);
+    port_.SetBaudRate(LibSerial::BaudRate::BAUD_500000);
     port_.SetCharacterSize(LibSerial::CharacterSize::CHAR_SIZE_8);
     port_.SetParity(LibSerial::Parity::PARITY_NONE);
     port_.SetStopBits(LibSerial::StopBits::STOP_BITS_1);

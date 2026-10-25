@@ -15,7 +15,7 @@
                 <!-- 1x decoding (RISING on one channel). Measure by hand: see README
                      "Calibrate ticks per rev". -->
                 <param name="left_enc_counts_per_rev">985.0</param>  <!-- hand-counted 2026-10-23: 10 turns = 9847 -->
-                <param name="right_enc_counts_per_rev">942.0</param>  <!-- hand-counted 2026-10-23: 10 turns = 9416 -->
+                <param name="right_enc_counts_per_rev">990.0</param>  <!-- re-counted 2026-10-25 (A+B): 9880 / 10 turns -->
                 <!-- Flip to -1.0 if a side's odom runs backwards when driving forward. -->
                 <param name="left_direction_sign">1.0</param>
                 <param name="right_direction_sign">1.0</param>

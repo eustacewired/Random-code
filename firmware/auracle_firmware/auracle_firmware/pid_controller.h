@@ -146,6 +146,9 @@ public:
         wrongSign_ = satCount_ = noMotion_ = 0;
     }
 
+    // Live gain change for tuning ('g'/'h' serial commands). Lost on reset; copy results to config.h.
+    void setGains(float kp, float ki) { p_.kp = kp; p_.ki = ki; }
+
     // Extra feedforward PWM (turn boost), set every control period. 0 = none.
     void setBoost(float b) { boost_ = b; }
 

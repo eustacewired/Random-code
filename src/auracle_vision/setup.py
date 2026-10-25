@@ -24,6 +24,6 @@ setup(
     },
     entry_points={
         'console_scripts': [
-        ],
+        'waste_detector = auracle_vision.waste_detector_node:main',]
     },
 )

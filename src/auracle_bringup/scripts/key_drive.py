@@ -58,7 +58,7 @@ DEFAULTS = {
     'speed_min': 0.7,
     'speed_max': 1.0,
     'speed_step': 0.1,
-    'publish_rate': 20.0,        # Hz, matches controller_manager on the robot
+    'publish_rate': 40.0,        # Hz, matches controller_manager on the robot (40)
     'first_hold': 0.6,           # s a single press counts as held (covers the key-repeat delay)
     'repeat_hold': 0.35,         # s after each repeat. Was 0.15: key repeats over SSH arrive in
                                  # bunches with gaps, which read as release/press = bursts.

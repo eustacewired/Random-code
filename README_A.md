@@ -561,49 +561,52 @@ auracle_bt/ is a behavior-tree mission runner that calls NavigateThroughPoses an
 
 # Launching
 ## Build
+cd ~/auracle_ws/Random-code 
+rm -rf build install log && colcon build --symlink-install
 
 ## Simulation
 
 ## Real robot
 Launch robot
 ```Pi terminal
-ros2 launch auracle_bringup launch_robot.launch.py namespace:=auracle use_joy_node:=false
+source install/setup.bash && ros2 launch auracle_bringup launch_robot.launch.py namespace:=auracle use_joy_node:=false
 ```
 Check if controllers active
 ```Pi terminal
-ros2 control list_controllers -c /auracle/controller_manager
+source install/setup.bash && ros2 control list_controllers -c /auracle/controller_manager
 ```
 Teleop (teleop_twist keyboard)
 ```
+source install/setup.bash && ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=cmd_vel_joy -r __ns:=/auracle -p speed:=0.15 -p turn:=0.8
 ```
 Teleop (modified keyboard)
 ```Pi terminal
-ros2 run auracle_bringup key_drive.py --ros-args -r cmd_vel:=cmd_vel_joy -r __ns:=/auracle
+source install/setup.bash && ros2 run auracle_bringup key_drive.py --ros-args -r cmd_vel:=cmd_vel_joy -r __ns:=/auracle
 ```
 SLAM (live mapping)
 ```PC terminal
 #confirm live topics
-ros2 topic list
+source install/setup.bash && ros2 topic list
 #launch
-ros2 launch auracle_bringup slam_mapping.launch.py namespace:=auracle use_slam:=false
+source install/setup.bash && ros2 launch auracle_bringup slam_mapping.launch.py namespace:=auracle 
 ```
 SLAM (headless mapping)
 ```
-ros2 launch auracle_bringup slam_mapping.launch.py namespace:=auracle use_rviz:=false
+source install/setup.bash && ros2 launch auracle_bringup slam_mapping.launch.py namespace:=auracle use_rviz:=false
 ```
 Save map after completion
 ```Pi
-ros2 run nav2_map_server map_saver_cli -f ~/maps/trial_1 --ros-args -r map:=/auracle/map
+source install/setup.bash && ros2 run nav2_map_server map_saver_cli -f ~/maps/trial_1 --ros-args -r map:=/auracle/map
 ```
 Navigation - stop teleop and SLAM, and close rviz on the laptop. Teleop has priority 100 in twist_mux, so a running key_drive can override Nav2.
 ```Pi
-ros2 launch auracle_bringup localization_nav_rviz.launch.py namespace:=auracle use_rviz:=false map:=$HOME/maps/trial_1.yaml
+source install/setup.bash && ros2 launch auracle_bringup localization_nav_rviz.launch.py namespace:=auracle use_rviz:=false map:=$HOME/maps/trial_1.yaml
 ```
 ```PC
-ros2 launch auracle_bringup localization_nav_rviz.launch.py namespace:=auracle use_nav:=false
+source install/setup.bash && ros2 launch auracle_bringup localization_nav_rviz.launch.py namespace:=auracle use_nav:=false
 ```
 Click 2D Pose Estimate and set the robot’s real position and heading. Check the particle cloud tightens around the robot and there are no TF errors. Click 2D Goal Pose on a free spot and drag to set the heading.
-To confirm a goal went through, run ros2 topic echo /auracle/cmd_vel_nav --once.
+To confirm a goal went through, run source install/setup.bash && ros2 topic echo /auracle/cmd_vel_nav --once.
 
 **Notes**
 Navigation didn't really turn my robot, and it id absolutely not accurate yet

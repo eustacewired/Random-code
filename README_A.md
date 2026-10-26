@@ -588,7 +588,7 @@ SLAM (live mapping)
 #confirm live topics
 source install/setup.bash && ros2 topic list
 #launch
-source install/setup.bash && ros2 launch auracle_bringup slam_mapping.launch.py namespace:=auracle 
+source install/setup.bash && chronysc waitsync 30 0.1 && ros2 launch auracle_bringup slam_mapping.launch.py namespace:=auracle 
 ```
 SLAM (headless mapping)
 ```

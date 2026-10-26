@@ -145,7 +145,7 @@ Until RB is fixed, the 0.16 m/s forward cap (RB_FWD_MAX_TICKS_S 740) limits the 
 ## Zenoh routing
 ROS2 Middleware: Zenoh
 When using the official ROS 2 Jazzy Zenoh middleware (rmw_zenoh port 7447), Zenoh respects your ROS_DOMAIN_ID. It uses the domain ID to partition discovery traffic and keep separate ROS graphs isolated, exactly like standard CycloneDDS or FastDDS do. Zenoh utilizes a peer-to-peer or router-based discovery mechanism. By default rmw_zenoh does not use multicast scouting: nodes connect to a router (tcp/localhost:7447 unless configured), so the PC is pointed at the Pi's router by IP (see PC Setup). Across different networks, only one central Zenoh router is needed on a known IP (or domain name). All dynamic-IP clients simply connect to that router, and Zenoh handles the routing automatically. Zenoh maps the Domain ID to a string path inside its session expressions, meaning it can comfortably support any ID from 0 to 255 (and even higher depending on the middleware version).
-Everyone else is on domain 0, so this setup uses its own unique ROS_DOMAIN_ID (89 here). It is set in three places that must match: the Pi's zenoh.service, the Pi's ~/.bashrc, and DOMAIN_ID in connect_pi.sh on the PC.
+Everyone else is on domain 0, so this setup uses its own unique ROS_DOMAIN_ID (42 in the examples, change it). It is set in three places that must match: the Pi's zenoh-router.service, the Pi's ~/.bashrc, and DOMAIN_ID in connect_pi.sh on the PC.
 
 ### Prerequisites
 Both Pi and PC
@@ -161,7 +161,7 @@ sudo apt install zenoh
 sudo apt install ros-jazzy-rmw-zenoh-cpp
 ```
 ### Pi setup
-A zenoh router service runs automatically on boot on the pi making it a router (/etc/systemd/system/zenoh.service)
+A zenoh router service runs automatically on boot on the pi making it a router (/etc/systemd/system/zenoh-router.service)
 ```
 [Unit]
 Description=Zenoh Router Service (rmw_zenoh)
@@ -185,17 +185,19 @@ WantedBy=multi-user.target
 Reload the systemd daemon, enable the service to launch on boot, and start it immediately
 ```
 sudo systemctl daemon-reload
-sudo systemctl enable zenoh.service
-sudo systemctl start zenoh.service
+sudo systemctl enable zenoh-router.service
+sudo systemctl start zenoh-router.service
 ```
 **Status and logs**
 ```
+#check running services
+systemctl list-units --type=service
 #check service status
-sudo systemctl status zenoh.service
+sudo systemctl status zenoh-router.service
 #view service logs -n 50 shows the last 50 lines, -f follows the logs in real time
-sudo journalctl -u zenoh.service -n 50 -f
+sudo journalctl -u zenoh-router.service -n 50 -f
 #restart stale service
-sudo systemctl restart zenoh.service
+sudo systemctl restart zenoh-router.service
 ```
 For ROS nodes you run on the Pi, add this to ~/.bashrc (same domain ID as the service):
 ```
@@ -208,9 +210,8 @@ To connect your PC and Raspberry Pi over a local network without internet access
 ```
 #!/bin/bash
 
-# Configuration - Change this to your Pi's actual hostname (or pass the Pi's IP as the first argument)
 PI_HOSTNAME="${1:-auracle.local}"
-# Configuration - your unique ROS domain ID (must match the Pi's zenoh.service and ~/.bashrc)
+# Configuration - your unique ROS domain ID (must match the Pi's zenoh-router.service and ~/.bashrc)
 DOMAIN_ID=89
 
 echo "===================================================="
@@ -294,7 +295,7 @@ New-NetFirewallRule -DisplayName "Allow Inbound ICMPv4 (Ping)" -Direction Inboun
 New-NetFirewallHyperVRule -Name "ChronyNTP" -DisplayName "Chrony NTP (WSL)" -Direction Inbound -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -Protocol UDP -LocalPorts 123
 ```
 ### PC setup
-Run this once only (it appends to the file), then sudo systemctl restart chrony. Keep a WSL terminal open while the Pi is syncing.
+Run this once only (it appends to the file), then `sudo systemctl restart chrony`. Keep a WSL terminal open while the Pi is syncing.
 ```
 # Configure Chrony as the network Time Server
 sudo bash -c "cat <<EOF >> /etc/chrony/chrony.conf
@@ -306,7 +307,6 @@ EOF"
 ```
 #!/bin/bash
 
-# Configuration - Change this to your Pi's actual hostname (or pass the Pi's IP as the first argument)
 PI_HOSTNAME="${1:-auracle.local}"
 PI_USER="auracle"
 
